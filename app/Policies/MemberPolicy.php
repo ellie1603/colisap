@@ -2,43 +2,26 @@
 
 namespace App\Policies;
 
-use App\Models\Member;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
 
-class MemberPolicy
+class MemberPolicy extends PermissionPolicy
 {
-    public function viewAny(User $user): bool
+    protected string $viewPermission = 'members.view';
+
+    protected string $createPermission = 'members.create';
+
+    protected string $updatePermission = 'members.update';
+
+    protected string $deletePermission = 'members.delete';
+
+    public function restore(User $user, Model $model): bool
     {
-        return $user->hasAnyRole(['admin', 'staff', 'auditor']);
+        return $this->allowed($user, 'members.restore');
     }
 
-    public function view(User $user, Member $member): bool
+    public function restoreAny(User $user): bool
     {
-        return $user->hasAnyRole(['admin', 'staff', 'auditor']);
-    }
-
-    public function create(User $user): bool
-    {
-        return $user->hasAnyRole(['admin', 'staff']);
-    }
-
-    public function update(User $user, Member $member): bool
-    {
-        return $user->hasAnyRole(['admin', 'staff']);
-    }
-
-    public function delete(User $user, Member $member): bool
-    {
-        return $user->hasRole('admin');
-    }
-
-    public function restore(User $user, Member $member): bool
-    {
-        return $user->hasRole('admin');
-    }
-
-    public function forceDelete(User $user, Member $member): bool
-    {
-        return $user->hasRole('admin');
+        return $this->allowed($user, 'members.restore');
     }
 }

@@ -2,12 +2,19 @@
 
 namespace Database\Seeders;
 
-use App\Models\EligibilityRule;
 use App\Models\User;
+use App\Services\Access\Permissions;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
+/**
+ * Starter data. Branches, policy settings, roles and permissions are created by migrations;
+ * this only makes sure they exist and creates the first accounts.
+ */
 class DatabaseSeeder extends Seeder
 {
     use WithoutModelEvents;
@@ -17,53 +24,47 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        collect(['admin', 'staff', 'auditor'])->each(
-            fn (string $role) => Role::firstOrCreate(['name' => $role, 'guard_name' => 'web'])
-        );
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
 
-        $admin = User::firstOrCreate(
-            ['email' => 'admin@bmpc.coop'],
-            [
-                'name' => 'BMPC Administrator',
-                'password' => 'password',
-                'is_active' => true,
-                'email_verified_at' => now(),
-            ]
-        );
-        $admin->assignRole('admin');
+        foreach (array_keys(Permissions::ALL) as $permission) {
+            Permission::findOrCreate($permission, 'web');
+        }
 
-        $staff = User::firstOrCreate(
-            ['email' => 'staff@bmpc.coop'],
-            [
-                'name' => 'COLISAP Encoder',
-                'password' => 'password',
-                'is_active' => true,
-                'email_verified_at' => now(),
-            ]
-        );
-        $staff->assignRole('staff');
+        Role::findOrCreate(Permissions::SUPER_ADMIN, 'web');
 
-        $auditor = User::firstOrCreate(
-            ['email' => 'auditor@bmpc.coop'],
-            [
-                'name' => 'Board Auditor',
-                'password' => 'password',
-                'is_active' => true,
-                'email_verified_at' => now(),
-            ]
-        );
-        $auditor->assignRole('auditor');
+        foreach (Permissions::defaults() as $role => $permissions) {
+            $model = Role::findOrCreate($role, 'web');
 
-        EligibilityRule::firstOrCreate(
-            ['name' => 'Standard COLISAP Eligibility'],
-            [
-                'description' => 'Default eligibility rule for the COLISAP death benefit. Adjust to match the official BMPC COLISAP policy.',
-                'min_membership_months' => 6,
-                'min_contribution_balance' => 500,
-                'max_missed_contributions' => 2,
-                'benefit_amount' => 10000,
-                'is_active' => true,
-            ]
-        );
+            // Only fill roles that have never been configured; never overwrite a Super Admin's changes.
+            if ($model->permissions()->doesntExist()) {
+                $model->syncPermissions($permissions);
+            }
+        }
+
+        $this->seedAccount('superadmin@bmpc.coop', 'COLISAP Super Admin', Permissions::SUPER_ADMIN);
+        $this->seedAccount('admin@bmpc.coop', 'BMPC Administrator', Permissions::ADMIN);
+        $this->seedAccount('crs@bmpc.coop', 'COLISAP CRS', Permissions::CRS);
+    }
+
+    /**
+     * Create a starter account once. Outside local development a random password is generated
+     * and printed a single time, so no live account ever uses a known default password.
+     */
+    private function seedAccount(string $email, string $name, string $role): void
+    {
+        if (User::where('email', $email)->exists()) {
+            return;
+        }
+
+        $password = app()->environment('local', 'testing') ? 'password' : Str::password(16, symbols: false);
+
+        User::create([
+            'email' => $email,
+            'name' => $name,
+            'password' => $password,
+            'is_active' => true,
+        ])->assignRole($role);
+
+        $this->command?->warn("Created {$role} account {$email} with password: {$password}");
     }
 }

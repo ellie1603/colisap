@@ -2,43 +2,13 @@
 
 namespace App\Policies;
 
-use App\Models\Beneficiary;
-use App\Models\User;
-
-class BeneficiaryPolicy
+class BeneficiaryPolicy extends PermissionPolicy
 {
-    public function viewAny(User $user): bool
-    {
-        return $user->hasAnyRole(['admin', 'staff', 'auditor']);
-    }
+    protected string $viewPermission = 'beneficiaries.view';
 
-    public function view(User $user, Beneficiary $beneficiary): bool
-    {
-        return $user->hasAnyRole(['admin', 'staff', 'auditor']);
-    }
+    protected string $createPermission = 'beneficiaries.manage';
 
-    public function create(User $user): bool
-    {
-        return $user->hasAnyRole(['admin', 'staff']);
-    }
+    protected string $updatePermission = 'beneficiaries.manage';
 
-    public function update(User $user, Beneficiary $beneficiary): bool
-    {
-        return $user->hasAnyRole(['admin', 'staff']);
-    }
-
-    public function delete(User $user, Beneficiary $beneficiary): bool
-    {
-        return $user->hasRole('admin');
-    }
-
-    public function restore(User $user, Beneficiary $beneficiary): bool
-    {
-        return $user->hasRole('admin');
-    }
-
-    public function forceDelete(User $user, Beneficiary $beneficiary): bool
-    {
-        return $user->hasRole('admin');
-    }
+    protected string $deletePermission = 'beneficiaries.manage';
 }

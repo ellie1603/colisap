@@ -2,12 +2,10 @@
 
 namespace App\Filament\Resources\MemberResource\RelationManagers;
 
-use Filament\Forms;
-use Filament\Forms\Form;
+use App\Models\Contribution;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Support\Facades\Auth;
 
 class ContributionsRelationManager extends RelationManager
 {
@@ -15,58 +13,27 @@ class ContributionsRelationManager extends RelationManager
 
     protected static ?string $title = 'Contributions';
 
-    public function form(Form $form): Form
+    protected static ?string $icon = 'heroicon-o-hand-raised';
+
+    public function isReadOnly(): bool
     {
-        return $form
-            ->schema([
-                Forms\Components\TextInput::make('amount')
-                    ->numeric()
-                    ->prefix('₱')
-                    ->required(),
-                Forms\Components\DatePicker::make('contribution_date')
-                    ->default(now())
-                    ->required(),
-                Forms\Components\TextInput::make('reference_no')
-                    ->label('OR / Reference No.')
-                    ->maxLength(255),
-                Forms\Components\Textarea::make('remarks')
-                    ->columnSpanFull(),
-                Forms\Components\Hidden::make('recorded_by')
-                    ->default(fn () => Auth::id()),
-            ]);
+        return true;
     }
 
     public function table(Table $table): Table
     {
         return $table
-            ->recordTitleAttribute('reference_no')
+            ->modifyQueryUsing(fn ($query) => $query->with('claim'))
             ->columns([
-                Tables\Columns\TextColumn::make('contribution_date')
-                    ->date()
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('amount')
-                    ->money('PHP')
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('reference_no')
-                    ->label('OR / Reference No.'),
-                Tables\Columns\TextColumn::make('recorder.name')
-                    ->label('Recorded By'),
-                Tables\Columns\TextColumn::make('created_at')
-                    ->dateTime()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('contribution_date')->date()->sortable(),
+                Tables\Columns\TextColumn::make('claim.claim_no')->label('Claim'),
+                Tables\Columns\TextColumn::make('amount')->money('PHP'),
+                Tables\Columns\TextColumn::make('member_share')->money('PHP')->visibleFrom('md'),
+                Tables\Columns\TextColumn::make('coop_share')->label('Coop share')->money('PHP')->visibleFrom('md'),
+                Tables\Columns\TextColumn::make('status')->badge()
+                    ->formatStateUsing(fn (string $state) => Contribution::STATUSES[$state] ?? $state)
+                    ->color(fn (string $state) => Contribution::statusColor($state)),
             ])
-            ->defaultSort('contribution_date', 'desc')
-            ->headerActions([
-                Tables\Actions\CreateAction::make(),
-            ])
-            ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
-            ])
-            ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
-            ]);
+            ->defaultSort('contribution_date', 'desc');
     }
 }

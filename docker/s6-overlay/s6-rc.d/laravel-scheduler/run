@@ -1,0 +1,4 @@
+#!/command/with-contenv bash
+cd /var/www/html
+echo "Starting Laravel scheduler..."
+exec php artisan schedule:work

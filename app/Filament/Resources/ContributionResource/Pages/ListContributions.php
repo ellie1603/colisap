@@ -3,17 +3,14 @@
 namespace App\Filament\Resources\ContributionResource\Pages;
 
 use App\Filament\Resources\ContributionResource;
-use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 
 class ListContributions extends ListRecords
 {
     protected static string $resource = ContributionResource::class;
 
-    protected function getHeaderActions(): array
+    public function getSubheading(): ?string
     {
-        return [
-            Actions\CreateAction::make(),
-        ];
+        return 'Contributions are generated from approved mortuary claims (Mortuary Claims → Generate contributions).';
     }
 }

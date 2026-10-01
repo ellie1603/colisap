@@ -6,16 +6,18 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
-use Filament\Pages;
+use Filament\Navigation\NavigationGroup;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
-use Filament\Widgets;
+use Filament\Support\Enums\MaxWidth;
+use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\HtmlString;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class AdminPanelProvider extends PanelProvider
@@ -26,23 +28,34 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
-            ->brandName('COLISAP')
+            ->brandName('COLISAP — Barbaza MPC')
+            ->brandLogo(asset('images/logo-192.png'))
+            ->brandLogoHeight('3rem')
+            ->favicon(asset('images/favicon.png'))
             ->font('Public Sans')
             ->login()
+            ->profile(isSimple: false)
             ->colors([
-                'primary' => Color::hex('#2C5A4C'),
+                'primary' => Color::hex('#3B3FA6'),
+                'warning' => Color::Orange,
                 'danger' => Color::Rose,
-                'gray' => Color::Stone,
+                'info' => Color::Sky,
+                'success' => Color::Emerald,
+                'gray' => Color::Slate,
+            ])
+            ->renderHook(PanelsRenderHook::STYLES_AFTER, fn () => new HtmlString('<link rel="stylesheet" href="'.e(asset('css/colisap.css')).'?v=1">'))
+            ->sidebarCollapsibleOnDesktop()
+            ->maxContentWidth(MaxWidth::Full)
+            ->navigationGroups([
+                NavigationGroup::make('Members'),
+                NavigationGroup::make('Mortuary'),
+                NavigationGroup::make('Monitoring'),
+                NavigationGroup::make('Data & Reports'),
+                NavigationGroup::make('Administration')->collapsed(),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
-            ->pages([
-                Pages\Dashboard::class,
-            ])
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
-            ->widgets([
-                Widgets\AccountWidget::class,
-            ])
             ->middleware([
                 EncryptCookies::class,
                 AddQueuedCookiesToResponse::class,

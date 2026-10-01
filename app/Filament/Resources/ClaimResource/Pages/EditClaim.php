@@ -13,7 +13,13 @@ class EditClaim extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            Actions\DeleteAction::make(),
+            Actions\ViewAction::make(),
+            Actions\DeleteAction::make()->label('Archive'),
         ];
+    }
+
+    protected function getRedirectUrl(): string
+    {
+        return ClaimResource::getUrl('view', ['record' => $this->record]);
     }
 }

@@ -1,0 +1,86 @@
+/*
+ * COLISAP UI additions for the Filament panel (loaded via a render hook).
+ * Uses Filament's colour variables so it follows the theme and dark mode.
+ */
+
+.colisap-muted { color: rgb(var(--gray-500)); font-size: .875rem; line-height: 1.4; }
+.dark .colisap-muted { color: rgb(var(--gray-400)); }
+
+.colisap-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
+.colisap-stack { display: grid; gap: 1rem; }
+
+/* Step indicator */
+.colisap-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; list-style: none; margin: 0; padding: 0; }
+@media (min-width: 640px) { .colisap-steps { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.colisap-step { display: flex; align-items: center; gap: .5rem; border-radius: .75rem; padding: .5rem .75rem; font-size: .875rem; font-weight: 500;
+    color: rgb(var(--gray-500)); box-shadow: inset 0 0 0 1px rgba(var(--gray-950), .1); }
+.dark .colisap-step { color: rgb(var(--gray-400)); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.colisap-step--current { color: rgb(var(--primary-700)); background: rgba(var(--primary-500), .08); box-shadow: inset 0 0 0 1px rgba(var(--primary-600), .35); }
+.dark .colisap-step--current { color: rgb(var(--primary-400)); }
+.colisap-step__num { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; flex-shrink: 0;
+    border-radius: 9999px; border: 1px solid currentColor; font-size: .75rem; }
+
+/* Progress bar */
+.colisap-progress { height: .75rem; width: 100%; overflow: hidden; border-radius: 9999px; background: rgb(var(--gray-200)); }
+.dark .colisap-progress { background: rgb(var(--gray-700)); }
+.colisap-progress__bar { height: 100%; border-radius: 9999px; background: rgb(var(--primary-600)); transition: width .3s ease; }
+
+/* Stat cards */
+.colisap-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+@media (min-width: 768px) { .colisap-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1280px) { .colisap-stats { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.colisap-stat { border-radius: .75rem; padding: 1rem; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.05), inset 0 0 0 1px rgba(var(--gray-950), .05); }
+.dark .colisap-stat { background: rgb(var(--gray-900)); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.colisap-stat__label { font-size: .75rem; font-weight: 500; color: rgb(var(--gray-500)); }
+.colisap-stat__value { margin-top: .25rem; font-size: 1.5rem; font-weight: 600; color: rgb(var(--gray-950)); }
+.dark .colisap-stat__value { color: #fff; }
+.colisap-stat--success .colisap-stat__value { color: rgb(var(--success-600)); }
+.colisap-stat--info .colisap-stat__value { color: rgb(var(--info-600)); }
+.colisap-stat--warning .colisap-stat__value { color: rgb(var(--warning-600)); }
+.colisap-stat--danger .colisap-stat__value { color: rgb(var(--danger-600)); }
+
+/* Sheet mapping cards */
+.colisap-sheet { border-radius: .75rem; padding: 1rem; box-shadow: inset 0 0 0 1px rgba(var(--gray-950), .1); }
+.dark .colisap-sheet { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.colisap-sheet__header { display: flex; flex-direction: column; gap: .75rem; }
+@media (min-width: 640px) { .colisap-sheet__header { flex-direction: row; align-items: center; justify-content: space-between; } }
+.colisap-sheet__title { font-weight: 600; color: rgb(var(--gray-950)); }
+.dark .colisap-sheet__title { color: #fff; }
+.colisap-sheet__branch { width: 100%; }
+@media (min-width: 640px) { .colisap-sheet__branch { width: 16rem; } }
+.colisap-check { display: flex; align-items: center; gap: .75rem; }
+.colisap-details { margin-top: .75rem; }
+.colisap-details > summary { cursor: pointer; font-size: .875rem; font-weight: 500; color: rgb(var(--primary-600)); }
+.colisap-field-grid { margin-top: .75rem; display: grid; grid-template-columns: 1fr; gap: .75rem; }
+@media (min-width: 640px) { .colisap-field-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .colisap-field-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.colisap-field { display: grid; gap: .25rem; font-size: .75rem; font-weight: 500; color: rgb(var(--gray-700)); }
+.dark .colisap-field { color: rgb(var(--gray-200)); }
+
+/* Dashboard alerts */
+.colisap-alerts { display: grid; gap: .5rem; }
+@media (min-width: 1024px) { .colisap-alerts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.colisap-alert { display: flex; gap: .75rem; align-items: flex-start; border-radius: .75rem; padding: .75rem 1rem; text-decoration: none;
+    border-left: 4px solid rgb(var(--gray-400)); background: rgba(var(--gray-500), .06); color: inherit; }
+.colisap-alert:hover { background: rgba(var(--gray-500), .12); }
+.colisap-alert--critical { border-left-color: rgb(var(--danger-600)); background: rgba(var(--danger-500), .07); }
+.colisap-alert--warning { border-left-color: rgb(var(--warning-500)); background: rgba(var(--warning-500), .08); }
+.colisap-alert--info { border-left-color: rgb(var(--info-500)); background: rgba(var(--info-500), .07); }
+.colisap-alert__count { min-width: 2.5rem; font-size: 1.25rem; font-weight: 700; text-align: right; }
+.colisap-alert__severity { font-size: .65rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+.colisap-alert--critical .colisap-alert__severity { color: rgb(var(--danger-600)); }
+.colisap-alert--warning .colisap-alert__severity { color: rgb(var(--warning-600)); }
+.colisap-alert--info .colisap-alert__severity { color: rgb(var(--info-600)); }
+.colisap-alert__title { font-weight: 600; }
+
+/* Dashboard header */
+.colisap-hero { display: flex; align-items: center; gap: 1rem; }
+.colisap-hero img { width: 3.5rem; height: 3.5rem; flex-shrink: 0; }
+.colisap-hero__title { font-size: 1.125rem; font-weight: 700; }
+@media (max-width: 639px) { .colisap-hero img { width: 2.75rem; height: 2.75rem; } }
+
+/* Policy settings */
+.colisap-policy-note { border-radius: .75rem; padding: .75rem 1rem; background: rgba(var(--warning-500), .08); border-left: 4px solid rgb(var(--warning-500)); font-size: .875rem; }
+
+/* Login logo sizing */
+.fi-simple-layout .fi-logo { height: 5rem !important; }

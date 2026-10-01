@@ -1,35 +1,17 @@
 <x-filament-panels::page>
-    <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <x-filament::section>
-            <x-slot name="heading">Active Members List</x-slot>
-            <p class="text-sm text-gray-500 mb-4">All currently active COLISAP members.</p>
-            <x-filament::button tag="a" href="{{ route('reports.active-members') }}" target="_blank" icon="heroicon-o-arrow-down-tray">
-                Download PDF
-            </x-filament::button>
-        </x-filament::section>
+    <x-filament::section>
+        <x-slot name="heading">Generate a report</x-slot>
+        <x-slot name="description">All reports read live data from the member database. Excel/CSV exports include every matching record; PDF is best for printing shorter lists.</x-slot>
 
-        <x-filament::section>
-            <x-slot name="heading">Contribution Summary</x-slot>
-            <p class="text-sm text-gray-500 mb-4">Total contributions per member for the current month.</p>
-            <x-filament::button tag="a" href="{{ route('reports.contribution-summary') }}" target="_blank" icon="heroicon-o-arrow-down-tray">
-                Download PDF
-            </x-filament::button>
-        </x-filament::section>
+        <div class="colisap-stack">
+            {{ $this->form }}
 
-        <x-filament::section>
-            <x-slot name="heading">Claims Processed</x-slot>
-            <p class="text-sm text-gray-500 mb-4">Claims filed so far this year, with status and amounts.</p>
-            <x-filament::button tag="a" href="{{ route('reports.claims-processed') }}" target="_blank" icon="heroicon-o-arrow-down-tray">
-                Download PDF
-            </x-filament::button>
-        </x-filament::section>
-
-        <x-filament::section>
-            <x-slot name="heading">Eligibility Status</x-slot>
-            <p class="text-sm text-gray-500 mb-4">Every active member's eligibility for the death benefit under the current rule.</p>
-            <x-filament::button tag="a" href="{{ route('reports.eligibility-status') }}" target="_blank" icon="heroicon-o-arrow-down-tray">
-                Download PDF
-            </x-filament::button>
-        </x-filament::section>
-    </div>
+            <div class="colisap-actions">
+                <x-filament::button wire:click="export('xlsx')" icon="heroicon-o-table-cells" wire:loading.attr="disabled">Excel (.xlsx)</x-filament::button>
+                <x-filament::button wire:click="export('csv')" icon="heroicon-o-document-text" color="gray" wire:loading.attr="disabled">CSV</x-filament::button>
+                <x-filament::button wire:click="export('pdf')" icon="heroicon-o-printer" color="gray" wire:loading.attr="disabled">PDF</x-filament::button>
+                <x-filament::loading-indicator class="h-5 w-5" wire:loading wire:target="export" />
+            </div>
+        </div>
+    </x-filament::section>
 </x-filament-panels::page>

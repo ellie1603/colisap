@@ -13,12 +13,15 @@ class AuditLog extends Model
     protected $fillable = [
         'user_id',
         'action',
+        'module',
         'auditable_type',
         'auditable_id',
         'old_values',
         'new_values',
         'description',
+        'reason',
         'ip_address',
+        'user_agent',
     ];
 
     protected $casts = [
@@ -30,6 +33,10 @@ class AuditLog extends Model
     protected static function booted(): void
     {
         static::creating(fn (AuditLog $log) => $log->created_at ??= now());
+
+        // The audit trail is append-only.
+        static::updating(fn () => false);
+        static::deleting(fn () => false);
     }
 
     public function user(): BelongsTo

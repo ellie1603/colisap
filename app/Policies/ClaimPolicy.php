@@ -2,43 +2,32 @@
 
 namespace App\Policies;
 
-use App\Models\Claim;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
 
-class ClaimPolicy
+class ClaimPolicy extends PermissionPolicy
 {
-    public function viewAny(User $user): bool
+    protected string $viewPermission = 'claims.view';
+
+    protected string $createPermission = 'claims.manage';
+
+    protected string $updatePermission = 'claims.manage';
+
+    protected string $deletePermission = 'claims.approve';
+
+    /**
+     * Approved, settled or rejected claims are part of the permanent record and cannot be edited.
+     */
+    public function update(User $user, Model $model): bool
     {
-        return $user->hasAnyRole(['admin', 'staff', 'auditor']);
+        return in_array($model->status, ['submitted', 'under_review'], true) && parent::update($user, $model);
     }
 
-    public function view(User $user, Claim $claim): bool
+    /**
+     * Only claims that were never processed may be archived.
+     */
+    public function delete(User $user, Model $model): bool
     {
-        return $user->hasAnyRole(['admin', 'staff', 'auditor']);
-    }
-
-    public function create(User $user): bool
-    {
-        return $user->hasAnyRole(['admin', 'staff']);
-    }
-
-    public function update(User $user, Claim $claim): bool
-    {
-        return $user->hasAnyRole(['admin', 'staff']);
-    }
-
-    public function delete(User $user, Claim $claim): bool
-    {
-        return $user->hasRole('admin');
-    }
-
-    public function restore(User $user, Claim $claim): bool
-    {
-        return $user->hasRole('admin');
-    }
-
-    public function forceDelete(User $user, Claim $claim): bool
-    {
-        return $user->hasRole('admin');
+        return $model->status === 'submitted' && parent::delete($user, $model);
     }
 }

@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Storage;
 
 class ClaimDocument extends Model
 {
@@ -17,6 +18,14 @@ class ClaimDocument extends Model
         'original_filename',
         'uploaded_by',
     ];
+
+    /**
+     * Remove the stored file when its document record is deleted.
+     */
+    protected static function booted(): void
+    {
+        static::deleted(fn (ClaimDocument $document) => Storage::disk('local')->delete($document->file_path));
+    }
 
     public function claim(): BelongsTo
     {
