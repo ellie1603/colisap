@@ -3,10 +3,12 @@
 namespace App\Models;
 
 use App\Models\Concerns\Auditable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
 class Branch extends Model
@@ -31,19 +33,56 @@ class Branch extends Model
      */
     private static array $lookupCache = [];
 
+    private static bool $restrictionPaused = false;
+
     public function members(): HasMany
     {
         return $this->hasMany(Member::class);
     }
 
     /**
-     * Branch options for selects, in official order.
+     * The branch the signed-in user is limited to, or null when they see every branch
+     * (Administrators, staff without a home branch, console commands).
+     */
+    public static function restrictedId(): ?int
+    {
+        return self::$restrictionPaused ? null : Auth::user()?->restrictedBranchId();
+    }
+
+    /**
+     * Run work that must see every branch whoever is signed in — a masterlist import matches
+     * Acct. Numbers across the whole cooperative so a member is never created twice.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $callback
+     * @return T
+     */
+    public static function withoutRestriction(callable $callback): mixed
+    {
+        $wasPaused = self::$restrictionPaused;
+        self::$restrictionPaused = true;
+
+        try {
+            return $callback();
+        } finally {
+            self::$restrictionPaused = $wasPaused;
+        }
+    }
+
+    /**
+     * Branch options for selects, in official order — only the user's own branch when they are limited to one.
      *
      * @return array<int, string>
      */
     public static function options(): array
     {
-        return static::query()->where('is_active', true)->orderBy('sort_order')->pluck('name', 'id')->all();
+        return static::query()
+            ->where('is_active', true)
+            ->when(self::restrictedId(), fn (Builder $query, int $branchId) => $query->whereKey($branchId))
+            ->orderBy('sort_order')
+            ->pluck('name', 'id')
+            ->all();
     }
 
     /**

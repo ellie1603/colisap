@@ -3,8 +3,6 @@
 namespace App\Services\Reports;
 
 use App\Models\Branch;
-use App\Models\Claim;
-use App\Models\Contribution;
 use App\Models\ImportBatch;
 use App\Models\Member;
 use App\Models\MemberHistory;
@@ -45,12 +43,9 @@ class ReportService
         'segment_S' => ['label' => 'Silver members', 'group' => 'Members by segment', 'date' => 'Approval date'],
         'segment_R' => ['label' => 'Regular members', 'group' => 'Members by segment', 'date' => 'Approval date'],
         'branch_summary' => ['label' => 'Branch summary', 'group' => 'Monitoring', 'date' => null],
-        'beneficiary_compliance' => ['label' => 'Beneficiary compliance', 'group' => 'Monitoring', 'date' => null],
         'effectivity' => ['label' => '180-day effectivity', 'group' => 'Monitoring', 'date' => 'Effectivity date'],
         'upgrades' => ['label' => '90-day upgrade eligibility', 'group' => 'Monitoring', 'date' => 'Upgrade request date'],
         'replenishment' => ['label' => 'Savings replenishment', 'group' => 'Monitoring', 'date' => 'Notice date'],
-        'claims' => ['label' => 'Mortuary claims', 'group' => 'Mortuary', 'date' => 'Date filed'],
-        'contributions' => ['label' => 'Contributions', 'group' => 'Mortuary', 'date' => 'Contribution date'],
         'status_history' => ['label' => 'Member status history', 'group' => 'History', 'date' => 'Change date'],
         'import_history' => ['label' => 'Excel import history', 'group' => 'History', 'date' => 'Upload date'],
     ];
@@ -78,14 +73,15 @@ class ReportService
     {
         $definition = self::REPORTS[$report] ?? self::REPORTS['masterlist'];
 
+        if ($branchId = Branch::restrictedId()) {
+            $filters['branch_ids'] = [$branchId];
+        }
+
         $result = match (true) {
             $report === 'branch_summary' => $this->branchSummary($filters),
-            $report === 'beneficiary_compliance' => $this->beneficiaryCompliance($filters),
             $report === 'effectivity' => $this->effectivity($filters),
             $report === 'upgrades' => $this->upgrades($filters),
             $report === 'replenishment' => $this->replenishment($filters),
-            $report === 'claims' => $this->claims($filters),
-            $report === 'contributions' => $this->contributions($filters),
             $report === 'status_history' => $this->statusHistory($filters),
             $report === 'import_history' => $this->importHistory($filters),
             default => $this->memberList($report, $filters),
@@ -188,7 +184,7 @@ class ReportService
             default => 'approval_date',
         };
 
-        $query = Member::query()->with('branch')->withCount('activeBeneficiaries');
+        $query = Member::query()->with('branch');
 
         if (str_starts_with($report, 'status_')) {
             $filters['statuses'] = [substr($report, 7)];
@@ -203,7 +199,7 @@ class ReportService
         $count = (clone $query)->count();
 
         return [
-            'headings' => ['Acct. Number', 'Account Name', 'Branch', 'Segment', 'Category', 'Status', 'Savings Balance', 'Beneficiaries', 'Application Date', 'Approval Date', 'Effectivity Date', 'Last Activity', 'Remarks'],
+            'headings' => ['Acct. Number', 'Account Name', 'Branch', 'Segment', 'Category', 'Status', 'Savings Balance', 'Application Date', 'Approval Date', 'Effectivity Date', 'Last Activity', 'Remarks'],
             'rows' => (function () use ($query) {
                 foreach ($query->lazy(500) as $member) {
                     yield [
@@ -214,7 +210,6 @@ class ReportService
                         Member::categoryLabel($member->category),
                         Member::STATUSES[$member->status] ?? $member->status,
                         round((float) $member->savings_balance, 2),
-                        $member->active_beneficiaries_count,
                         $member->application_date?->toDateString(),
                         $member->approval_date?->toDateString(),
                         $member->effectivityDate()?->toDateString(),
@@ -259,41 +254,6 @@ class ReportService
             'rows' => $rows,
             'count' => count($rows),
             'text_columns' => [],
-        ];
-    }
-
-    private function beneficiaryCompliance(array $filters): array
-    {
-        $query = Member::query()->with('branch')->participating()->withCount('activeBeneficiaries');
-        $this->applyMemberFilters($query, $filters, null)->orderBy('active_beneficiaries_count')->orderBy('account_name');
-        $min = $this->policy->int('min_beneficiaries');
-        $max = $this->policy->int('max_beneficiaries');
-
-        return [
-            'headings' => ['Acct. Number', 'Account Name', 'Branch', 'Status', 'Beneficiaries', 'Total share %', 'Compliance'],
-            'rows' => (function () use ($query, $min, $max) {
-                foreach ($query->lazy(500) as $member) {
-                    $count = $member->active_beneficiaries_count;
-                    $share = (float) $member->activeBeneficiaries()->sum('share_percentage');
-
-                    yield [
-                        $member->account_no,
-                        $member->account_name,
-                        $member->branch?->name,
-                        Member::STATUSES[$member->status] ?? $member->status,
-                        $count,
-                        $count ? round($share, 2) : null,
-                        match (true) {
-                            $count === 0 => 'Beneficiary information incomplete',
-                            $count < $min || $count > $max => 'Outside allowed range',
-                            round($share, 2) !== 100.0 => 'Shares do not total 100%',
-                            default => 'Compliant',
-                        },
-                    ];
-                }
-            })(),
-            'count' => (clone $query)->count(),
-            'text_columns' => [0],
         ];
     }
 
@@ -385,75 +345,6 @@ class ReportService
         ];
     }
 
-    // ------------------------------------------------------------------ Mortuary
-
-    private function claims(array $filters): array
-    {
-        $query = Claim::query()->with(['member.branch', 'beneficiary'])
-            ->whereHas('member', fn (Builder $q) => $this->applyMemberFilters($q, array_diff_key($filters, ['statuses' => 1, 'category' => 1]), null))
-            ->when($filters['category'] ?? null, fn (Builder $q, $category) => $q->where('category', $category))
-            ->when($filters['from'] ?? null, fn (Builder $q, $date) => $q->whereDate('date_filed', '>=', $date))
-            ->when($filters['until'] ?? null, fn (Builder $q, $date) => $q->whereDate('date_filed', '<=', $date))
-            ->orderBy('date_filed');
-
-        return [
-            'headings' => ['Claim No.', 'Acct. Number', 'Member', 'Branch', 'Category', 'Date of Death', 'Date Filed', 'Gross Benefit', 'Loans', 'Other Obligations', 'Net Benefit', 'Status', 'Settled'],
-            'rows' => (function () use ($query) {
-                foreach ($query->lazy(500) as $claim) {
-                    yield [
-                        $claim->claim_no,
-                        $claim->member?->account_no,
-                        $claim->member?->account_name,
-                        $claim->member?->branch?->name,
-                        Member::categoryLabel($claim->category),
-                        $claim->date_of_death?->toDateString(),
-                        $claim->date_filed?->toDateString(),
-                        (float) $claim->gross_benefit,
-                        (float) $claim->outstanding_loan,
-                        (float) $claim->other_obligations,
-                        (float) $claim->net_benefit,
-                        Claim::STATUSES[$claim->status] ?? $claim->status,
-                        $claim->settled_at?->toDateString(),
-                    ];
-                }
-            })(),
-            'count' => (clone $query)->count(),
-            'text_columns' => [1],
-        ];
-    }
-
-    private function contributions(array $filters): array
-    {
-        $query = Contribution::query()->with(['member.branch', 'claim'])
-            ->whereHas('member', fn (Builder $q) => $this->applyMemberFilters($q, array_diff_key($filters, ['segment' => 1]), null))
-            ->when($filters['segment'] ?? null, fn (Builder $q, $segment) => $q->where('segment', $segment))
-            ->when($filters['from'] ?? null, fn (Builder $q, $date) => $q->whereDate('contribution_date', '>=', $date))
-            ->when($filters['until'] ?? null, fn (Builder $q, $date) => $q->whereDate('contribution_date', '<=', $date))
-            ->orderBy('contribution_date');
-
-        return [
-            'headings' => ['Date', 'Claim No.', 'Acct. Number', 'Member', 'Branch', 'Segment', 'Amount', 'Member Share', 'Coop Share', 'Status'],
-            'rows' => (function () use ($query) {
-                foreach ($query->lazy(500) as $contribution) {
-                    yield [
-                        $contribution->contribution_date?->toDateString(),
-                        $contribution->claim?->claim_no,
-                        $contribution->member?->account_no,
-                        $contribution->member?->account_name,
-                        $contribution->member?->branch?->name,
-                        Member::segmentLabel($contribution->segment),
-                        (float) $contribution->amount,
-                        (float) $contribution->member_share,
-                        (float) $contribution->coop_share,
-                        Contribution::STATUSES[$contribution->status] ?? $contribution->status,
-                    ];
-                }
-            })(),
-            'count' => (clone $query)->count(),
-            'text_columns' => [2],
-        ];
-    }
-
     // ------------------------------------------------------------------ History
 
     private function statusHistory(array $filters): array
@@ -490,7 +381,7 @@ class ReportService
 
     private function importHistory(array $filters): array
     {
-        $query = ImportBatch::query()->with('uploader')
+        $query = ImportBatch::query()->visibleToCurrentUser()->with('uploader')
             ->when($filters['from'] ?? null, fn (Builder $q, $date) => $q->whereDate('created_at', '>=', $date))
             ->when($filters['until'] ?? null, fn (Builder $q, $date) => $q->whereDate('created_at', '<=', $date))
             ->orderBy('id');

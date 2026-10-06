@@ -4,7 +4,6 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\MemberResource\Pages;
 use App\Filament\Resources\MemberResource\RelationManagers;
-use App\Models\Beneficiary;
 use App\Models\Branch;
 use App\Models\Member;
 use App\Services\Policy\PolicySettings;
@@ -150,52 +149,6 @@ class MemberResource extends Resource
                             ->visibleOn('edit'),
                         Forms\Components\Textarea::make('remarks')->rows(2)->columnSpanFull(),
                     ]),
-                Forms\Components\Section::make('Beneficiaries')
-                    ->description(fn () => 'Between '.static::policy()->int('min_beneficiaries').' and '.static::policy()->int('max_beneficiaries').' beneficiaries; shares must total exactly 100%.')
-                    ->schema([
-                        Forms\Components\Repeater::make('activeBeneficiaries')
-                            ->relationship('activeBeneficiaries')
-                            ->hiddenLabel()
-                            ->orderColumn('priority')
-                            ->minItems(fn () => static::policy()->int('min_beneficiaries'))
-                            ->maxItems(fn () => static::policy()->int('max_beneficiaries'))
-                            ->defaultItems(0)
-                            ->addActionLabel('Add beneficiary')
-                            ->itemLabel(fn (array $state) => trim(($state['full_name'] ?? 'New beneficiary').(isset($state['share_percentage']) && $state['share_percentage'] !== '' ? " — {$state['share_percentage']}%" : '')))
-                            ->collapsible()
-                            ->disabled(fn () => ! (Auth::user()?->can('beneficiaries.manage') ?? false))
-                            ->columns(['default' => 1, 'sm' => 2, 'lg' => 4])
-                            ->rule(fn () => function (string $attribute, mixed $value, \Closure $fail) {
-                                $items = collect($value ?? []);
-
-                                if ($items->isEmpty()) {
-                                    return;
-                                }
-
-                                $total = round($items->sum(fn ($item) => (float) ($item['share_percentage'] ?? 0)), 2);
-
-                                if ($total !== 100.0) {
-                                    $fail("Beneficiary shares must total exactly 100% (currently {$total}%).");
-                                }
-                            })
-                            ->mutateRelationshipDataBeforeCreateUsing(fn (array $data) => [...$data, 'is_active' => true])
-                            ->schema([
-                                Forms\Components\TextInput::make('full_name')->required()->maxLength(255)->columnSpan(['lg' => 2]),
-                                Forms\Components\Select::make('relationship')->options(Beneficiary::RELATIONSHIPS)->required(),
-                                Forms\Components\TextInput::make('share_percentage')
-                                    ->label('Share (%)')
-                                    ->numeric()
-                                    ->minValue(0.01)
-                                    ->maxValue(100)
-                                    ->suffix('%')
-                                    ->required(),
-                                Forms\Components\DatePicker::make('birthdate')->maxDate(now()),
-                                Forms\Components\TextInput::make('contact_number')->tel()->maxLength(50),
-                                Forms\Components\Select::make('id_type')->label('ID type')->options(Beneficiary::ID_TYPES),
-                                Forms\Components\TextInput::make('id_number')->label('ID number')->maxLength(100),
-                                Forms\Components\Textarea::make('address')->rows(1)->columnSpanFull(),
-                            ]),
-                    ]),
             ]);
     }
 
@@ -227,10 +180,6 @@ class MemberResource extends Resource
                                 Infolists\Components\TextEntry::make('savings_balance')->label('Savings balance')->money('PHP')
                                     ->color(fn (Member $record) => $record->meetsMinimumBalance() ? null : 'danger')
                                     ->helperText(fn (Member $record) => 'Minimum ₱'.number_format($record->minimumBalance(), 2)),
-                                Infolists\Components\TextEntry::make('beneficiary_status')->label('Beneficiaries')
-                                    ->state(fn (Member $record) => $record->beneficiaryCount() === 0 ? 'Beneficiary information incomplete' : $record->beneficiaryCount().' active')
-                                    ->badge()
-                                    ->color(fn (Member $record) => $record->hasCompleteBeneficiaries() ? 'success' : 'danger'),
                                 Infolists\Components\TextEntry::make('effectivity')->label('Effectivity date')
                                     ->state(fn (Member $record) => $record->effectivityDate()?->toFormattedDateString() ?? 'No approval date')
                                     ->helperText(fn (Member $record) => $record->status === 'waiting' && $record->daysUntilEffective() !== null ? $record->daysUntilEffective().' day(s) remaining' : null),
@@ -318,10 +267,11 @@ class MemberResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn (Builder $query) => $query->with('branch')->withCount('activeBeneficiaries'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with('branch'))
             ->columns([
                 Tables\Columns\TextColumn::make('account_no')
-                    ->label('Acct. Number')
+                    ->label('CIF Key')
+                    ->tooltip('CIF Key = Acct. Number')
                     ->searchable()
                     ->sortable()
                     ->copyable()
@@ -338,6 +288,7 @@ class MemberResource extends Resource
                     ->toggleable()
                     ->visibleFrom('md'),
                 Tables\Columns\TextColumn::make('segment')
+                    ->label('Segmentation')
                     ->badge()
                     ->formatStateUsing(fn (Member $record) => Member::segmentLabel($record->segment))
                     ->default('—')
@@ -350,6 +301,14 @@ class MemberResource extends Resource
                     ->color(fn (string $state) => $state === '60000' ? 'warning' : 'gray')
                     ->toggleable()
                     ->visibleFrom('sm'),
+                Tables\Columns\TextColumn::make('membership_date')
+                    ->label('Application Date')
+                    ->state(fn (Member $record) => $record->application_date ?? $record->approval_date)
+                    ->date()
+                    ->placeholder('—')
+                    ->sortable(query: fn (Builder $query, string $direction) => $query->orderByRaw('coalesce(application_date, approval_date) '.($direction === 'desc' ? 'desc' : 'asc')))
+                    ->toggleable()
+                    ->visibleFrom('lg'),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->formatStateUsing(fn (string $state) => Member::STATUSES[$state] ?? ucfirst($state))
@@ -357,23 +316,13 @@ class MemberResource extends Resource
                     ->icon(fn (string $state) => Member::statusIcon($state))
                     ->sortable(),
                 Tables\Columns\TextColumn::make('savings_balance')
-                    ->label('Savings')
+                    ->label('Saving Balance')
                     ->money('PHP')
                     ->sortable()
+                    ->alignEnd()
                     ->color(fn (Member $record) => $record->meetsMinimumBalance() ? null : 'danger')
                     ->toggleable()
                     ->visibleFrom('md'),
-                Tables\Columns\TextColumn::make('active_beneficiaries_count')
-                    ->label('Benef.')
-                    ->badge()
-                    ->color(fn (int $state) => $state === 0 ? 'danger' : 'success')
-                    ->sortable()
-                    ->toggleable()
-                    ->visibleFrom('lg'),
-                Tables\Columns\TextColumn::make('application_date')
-                    ->date()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('approval_date')
                     ->date()
                     ->sortable()
@@ -384,8 +333,7 @@ class MemberResource extends Resource
                     ->date()
                     ->description(fn (Member $record) => $record->status === 'waiting' && $record->daysUntilEffective() !== null ? $record->daysUntilEffective().' days left' : null)
                     ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('approval_date', $direction))
-                    ->toggleable()
-                    ->visibleFrom('xl'),
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('last_activity_date')
                     ->label('Last activity')
                     ->date()
@@ -425,13 +373,6 @@ class MemberResource extends Resource
                 Tables\Filters\SelectFilter::make('category')
                     ->label('Category')
                     ->options(Member::CATEGORIES),
-                Tables\Filters\SelectFilter::make('beneficiaries')
-                    ->label('Beneficiary count')
-                    ->options(['0' => 'None', '1' => '1', '2' => '2', '3' => '3'])
-                    ->query(fn (Builder $query, array $data) => $query->when(
-                        ($data['value'] ?? null) !== null && $data['value'] !== '',
-                        fn (Builder $query) => $query->has('activeBeneficiaries', '=', (int) $data['value']),
-                    )),
                 Tables\Filters\TernaryFilter::make('below_minimum')
                     ->label('Savings vs. minimum')
                     ->placeholder('All')
@@ -495,18 +436,18 @@ class MemberResource extends Resource
                 Tables\Actions\RestoreAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make()
-                        ->label('Archive selected')
-                        ->modalDescription('Archived members, with their beneficiaries, claims and contributions, are hidden from lists, dashboards and reports but kept for history. They can be restored.'),
-                    Tables\Actions\RestoreBulkAction::make(),
-                ]),
+                Tables\Actions\DeleteBulkAction::make()
+                    ->label('Delete selected')
+                    ->modalHeading('Delete the selected members?')
+                    ->modalDescription('Deleted members are removed from lists, dashboards and reports. They are kept in the archive, so a mistake can be undone from the "Archived members" filter.')
+                    ->modalSubmitActionLabel('Delete'),
+                Tables\Actions\RestoreBulkAction::make()->label('Restore selected'),
             ])
             ->recordUrl(fn (Member $record) => static::getUrl('view', ['record' => $record]))
             ->defaultSort('account_name')
-            ->striped()
-            ->deferLoading()
-            ->poll('60s');
+            ->paginated([25, 50, 100, 250])
+            ->defaultPaginationPageOption(25)
+            ->striped();
     }
 
     private static function dateRangeFilter(string $column, string $label): Tables\Filters\Filter
@@ -534,10 +475,7 @@ class MemberResource extends Resource
     public static function getRelations(): array
     {
         return [
-            RelationManagers\BeneficiariesRelationManager::class,
             RelationManagers\SavingsTransactionsRelationManager::class,
-            RelationManagers\ClaimsRelationManager::class,
-            RelationManagers\ContributionsRelationManager::class,
             RelationManagers\ApplicationsRelationManager::class,
             RelationManagers\ReplenishmentNoticesRelationManager::class,
             RelationManagers\HistoriesRelationManager::class,

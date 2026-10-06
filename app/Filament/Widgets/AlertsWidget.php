@@ -9,7 +9,9 @@ class AlertsWidget extends Widget
 {
     protected static string $view = 'filament.widgets.alerts';
 
-    protected int|string|array $columnSpan = 'full';
+    protected static bool $isLazy = false;
+
+    protected int|string|array $columnSpan = 1;
 
     protected static ?string $pollingInterval = '60s';
 

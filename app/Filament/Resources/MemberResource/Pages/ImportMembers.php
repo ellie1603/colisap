@@ -17,6 +17,7 @@ use Filament\Tables;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Attributes\Url;
@@ -67,7 +68,7 @@ class ImportMembers extends Page implements HasTable
     {
         abort_unless(static::canAccess(), 403);
 
-        $this->uploadForm->fill(['as_of_date' => now()->toDateString()]);
+        $this->uploadForm->fill();
 
         if ($this->batch()) {
             $this->loadMapping();
@@ -99,11 +100,6 @@ class ImportMembers extends Page implements HasTable
                     ])
                     ->maxSize(51200)
                     ->required(),
-                Forms\Components\DatePicker::make('as_of_date')
-                    ->label('Masterlist as of')
-                    ->helperText('Date of the savings balances and statuses in this file.')
-                    ->maxDate(now())
-                    ->required(),
                 Forms\Components\Hidden::make('original_name'),
             ])
             ->statePath('upload');
@@ -111,7 +107,7 @@ class ImportMembers extends Page implements HasTable
 
     public function batch(): ?ImportBatch
     {
-        return $this->batchId ? ImportBatch::find($this->batchId) : null;
+        return $this->batchId ? ImportBatch::query()->visibleToCurrentUser()->find($this->batchId) : null;
     }
 
     private function service(): MasterlistImportService
@@ -126,7 +122,7 @@ class ImportMembers extends Page implements HasTable
         $state = $this->uploadForm->getState();
 
         try {
-            $batch = $this->service()->createBatch($state['file'], $state['original_name'] ?? basename($state['file']), $state['as_of_date']);
+            $batch = $this->service()->createBatch($state['file'], $state['original_name'] ?? basename($state['file']));
         } catch (Throwable $exception) {
             report($exception);
             Storage::disk(MasterlistImportService::DISK)->delete($state['file']);
@@ -148,13 +144,22 @@ class ImportMembers extends Page implements HasTable
         }
     }
 
+    /**
+     * Staff limited to one branch import only that branch's sheet: sheets matched to other branches start unticked.
+     */
     private function loadMapping(): void
     {
-        $this->mapping = collect($this->batch()?->sheets ?? [])->map(fn (array $sheet) => [
-            'include' => (bool) ($sheet['include'] ?? false),
-            'branch_id' => $sheet['branch_id'] ?? null,
-            'columns' => collect(WorkbookParser::FIELDS)->mapWithKeys(fn ($label, $field) => [$field => $sheet['columns'][$field] ?? null])->all(),
-        ])->all();
+        $ownBranch = Branch::restrictedId();
+
+        $this->mapping = collect($this->batch()?->sheets ?? [])->map(function (array $sheet) use ($ownBranch) {
+            $isAllowed = $ownBranch === null || (int) ($sheet['branch_id'] ?? 0) === $ownBranch;
+
+            return [
+                'include' => $isAllowed && ($sheet['include'] ?? false),
+                'branch_id' => $isAllowed ? $sheet['branch_id'] ?? null : null,
+                'columns' => collect(WorkbookParser::FIELDS)->mapWithKeys(fn ($label, $field) => [$field => $sheet['columns'][$field] ?? null])->all(),
+            ];
+        })->all();
     }
 
     // ------------------------------------------------------------ Step 2: mapping → validation
@@ -163,6 +168,7 @@ class ImportMembers extends Page implements HasTable
     {
         $batch = $this->batch();
         $branches = Branch::pluck('name', 'id');
+        $ownBranch = Branch::restrictedId();
         $sheets = $batch->sheets;
         $problems = [];
 
@@ -184,6 +190,8 @@ class ImportMembers extends Page implements HasTable
                 $problems[] = "{$sheet['name']}: map the Account Name column";
             } elseif ($include && ! $map['branch_id']) {
                 $problems[] = "{$sheet['name']}: choose a branch";
+            } elseif ($include && $ownBranch !== null && (int) $map['branch_id'] !== $ownBranch) {
+                $problems[] = "{$sheet['name']}: you can only import members of the {$branches[$ownBranch]} branch";
             }
 
             $sheets[$position]['include'] = $include;
@@ -301,7 +309,7 @@ class ImportMembers extends Page implements HasTable
         $this->batchId = null;
         $this->mapping = [];
         $this->staging = false;
-        $this->uploadForm->fill(['as_of_date' => now()->toDateString()]);
+        $this->uploadForm->fill();
     }
 
     public function downloadIssues(): StreamedResponse
@@ -337,8 +345,48 @@ class ImportMembers extends Page implements HasTable
                 Tables\Filters\Filter::make('has_warnings')->label('With warnings')
                     ->query(fn ($query) => $query->whereNotNull('warnings')->where('warnings', '<>', '[]')),
             ])
+            ->bulkActions([
+                Tables\Actions\BulkAction::make('remove')
+                    ->label('Delete selected')
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalHeading('Delete the selected rows from this import?')
+                    ->modalDescription('The rows are removed from this import only and will not be written to the system. Nothing changes in the Excel file or in members already saved.')
+                    ->modalSubmitActionLabel('Delete rows')
+                    ->visible(fn () => $this->batch()?->status === 'staged')
+                    ->deselectRecordsAfterCompletion()
+                    ->action(fn (Collection $records) => $this->removeStagedRows($records)),
+            ])
             ->defaultSort('id')
             ->paginated([10, 25, 50, 100]);
+    }
+
+    /**
+     * Drop staged rows the user does not want imported (rows with issues, wrong entries) and refresh the totals.
+     *
+     * @param  Collection<int, ImportRow>  $rows
+     */
+    public function removeStagedRows(Collection $rows): void
+    {
+        $batch = $this->batch();
+
+        if (! $batch || $batch->status !== 'staged') {
+            Notification::make()->title('Rows can only be deleted before the import starts')->warning()->send();
+
+            return;
+        }
+
+        $removed = ImportRow::query()
+            ->where('import_batch_id', $batch->id)
+            ->where('action', '<>', 'reference')
+            ->whereKey($rows->modelKeys())
+            ->delete();
+
+        $this->service()->refreshCounts($batch);
+        $this->resetTable();
+
+        Notification::make()->title($removed === 1 ? '1 row deleted from this import' : number_format($removed).' rows deleted from this import')->success()->send();
     }
 
     /**
@@ -349,6 +397,7 @@ class ImportMembers extends Page implements HasTable
         return [
             'batch' => $this->batch(),
             'branches' => Branch::options(),
+            'ownBranchName' => Branch::whereKey(Branch::restrictedId())->value('name'),
             'fields' => WorkbookParser::FIELDS,
         ];
     }

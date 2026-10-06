@@ -12,8 +12,6 @@ Route::get('/login', function () {
 })->name('login');
 
 Route::middleware(['auth', 'active'])->group(function () {
-    Route::get('/claim-documents/{claimDocument}/download', [DocumentController::class, 'claimDocument'])->name('claim-documents.download');
     Route::get('/members/{member}/certificate', [DocumentController::class, 'certificate'])->name('members.certificate');
     Route::get('/members/{member}/withdrawal-letter', [DocumentController::class, 'withdrawalLetter'])->name('members.withdrawal-letter');
-    Route::get('/claims/{claim}/print', [DocumentController::class, 'claim'])->name('claims.print');
 });

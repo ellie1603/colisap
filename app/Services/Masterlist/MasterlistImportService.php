@@ -3,6 +3,8 @@
 namespace App\Services\Masterlist;
 
 use App\Models\Application;
+use App\Models\AuditLog;
+use App\Models\Branch;
 use App\Models\ImportBatch;
 use App\Models\ImportRow;
 use App\Models\Member;
@@ -34,16 +36,20 @@ class MasterlistImportService
     public function __construct(
         private WorkbookParser $parser,
         private PolicySettings $policy,
+        private StatusTextMapper $statusText,
     ) {}
 
-    public function createBatch(string $storedPath, string $originalName, Carbon|string $asOfDate): ImportBatch
+    /**
+     * Balances and statuses in the workbook are taken as of the upload date unless a date is given.
+     */
+    public function createBatch(string $storedPath, string $originalName, Carbon|string|null $asOfDate = null): ImportBatch
     {
         $sheets = $this->parser->detectSheets(Storage::disk(self::DISK)->path($storedPath));
 
         $batch = ImportBatch::create([
             'file_name' => $originalName,
             'file_path' => $storedPath,
-            'as_of_date' => $asOfDate,
+            'as_of_date' => $asOfDate ?? now()->toDateString(),
             'status' => 'analyzed',
             'sheets' => array_map(fn (array $sheet) => [...$sheet, 'staged' => false, 'staged_rows' => 0], $sheets),
             'uploaded_by' => Auth::id(),
@@ -87,6 +93,7 @@ class MasterlistImportService
         $path = Storage::disk(self::DISK)->path($batch->file_path);
 
         $buffer = [];
+        $references = [];
         $numericAccountRows = [];
         $lengthTally = [];
         $staged = 0;
@@ -94,7 +101,7 @@ class MasterlistImportService
 
         foreach ($this->parser->rows($path, $sheet['index'], (int) $sheet['header_row']) as $rowNumber => $cells) {
             foreach ($this->parser->sideListEntries($cells, array_values($columns)) as $entry) {
-                $buffer[] = $this->stagedRow($batch, $sheet, $rowNumber, $now, [
+                $references[] = $this->stagedRow($batch, $sheet, $rowNumber, $now, [
                     'account_no' => $entry['account_no'],
                     'account_name' => $entry['account_name'],
                     'action' => 'reference',
@@ -136,11 +143,6 @@ class MasterlistImportService
 
                 $buffer[] = $row;
             }
-
-            if (count($buffer) >= self::INSERT_CHUNK) {
-                ImportRow::insert($buffer);
-                $buffer = [];
-            }
         }
 
         // Account numbers typed as numbers in Excel lose their leading zeros; restore them to the sheet's usual length.
@@ -158,6 +160,42 @@ class MasterlistImportService
             }
 
             $buffer[] = [...$row, 'account_no' => $data['account_no'], 'data' => json_encode($data), 'warnings' => json_encode($warnings)];
+        }
+
+        // Side lists sometimes carry an extra leading zero (e.g. 001001009118 for 01001009118); align them with the sheet.
+        $sideValues = [];
+
+        foreach ($references as $index => $reference) {
+            if ($usualLength && strlen($reference['account_no']) > $usualLength && str_starts_with($reference['account_no'], '0')) {
+                $trimmed = ltrim($reference['account_no'], '0');
+                $references[$index]['account_no'] = strlen($trimmed) <= $usualLength ? str_pad($trimmed, $usualLength, '0', STR_PAD_LEFT) : $reference['account_no'];
+            }
+
+            $entry = json_decode($reference['data'], true);
+            $sideValues[$references[$index]['account_no']][$entry['kind']] ??= $entry['value'];
+        }
+
+        // A sheet's side lists mostly describe its own members: apply them here, in memory, before anything is written.
+        $appliedAccounts = [];
+
+        foreach ($buffer as $index => $row) {
+            $side = $row['action'] === 'pending' ? ($sideValues[$row['account_no']] ?? null) : null;
+
+            if ($side === null) {
+                continue;
+            }
+
+            $appliedAccounts[$row['account_no']] = true;
+            [$data, $warnings] = $this->withSideValues(json_decode($row['data'], true), json_decode($row['warnings'], true) ?? [], $side);
+            $buffer[$index]['data'] = json_encode($data);
+            $buffer[$index]['warnings'] = json_encode($warnings);
+        }
+
+        // Entries for other accounts stay as references: they may belong to another sheet or to a member already in the system.
+        foreach ($references as $reference) {
+            if (! isset($appliedAccounts[$reference['account_no']])) {
+                $buffer[] = $reference;
+            }
         }
 
         foreach (array_chunk($buffer, self::INSERT_CHUNK) as $chunk) {
@@ -201,7 +239,7 @@ class MasterlistImportService
      */
     public function finalize(ImportBatch $batch): ImportBatch
     {
-        $this->applySideLists($batch);
+        Branch::withoutRestriction(fn () => $this->applySideLists($batch));
 
         $pending = fn () => ImportRow::query()->where('import_batch_id', $batch->id)->where('action', 'pending');
 
@@ -247,62 +285,95 @@ class MasterlistImportService
         $hasDormancyInfo = collect($sheets)->contains(fn (array $sheet) => ($sheet['include'] ?? false) && isset($sheet['columns']['savings_account_status']))
             || ImportRow::where('import_batch_id', $batch->id)->where('action', 'reference')->where('data->kind', 'flag')->exists();
 
-        ImportRow::query()
-            ->where('import_batch_id', $batch->id)
-            ->where('action', 'reference')
-            ->chunkById(500, function ($references) use ($batch) {
-                $targets = ImportRow::query()
-                    ->where('import_batch_id', $batch->id)
-                    ->whereIn('action', ['pending'])
-                    ->whereIn('account_no', $references->pluck('account_no')->unique()->all())
-                    ->get()
-                    ->groupBy('account_no');
+        $references = fn () => DB::table('import_rows')->where('import_batch_id', $batch->id)->where('action', 'reference');
 
-                foreach ($references as $reference) {
-                    $kind = $reference->data['kind'];
-                    $value = $reference->data['value'];
-                    $matched = $targets->get($reference->account_no);
+        // 1. Read every side-list entry once: account → kind → value (the first entry of each kind wins).
+        //    A branch's savings list covers all depositors, so most entries belong to people who are not COLISAP members.
+        $sideValues = [];
 
-                    if ($matched === null) {
-                        $exists = Member::withTrashed()->where('account_no', $reference->account_no)->value('id');
-                        $reference->update([
-                            'member_id' => $exists,
-                            'warnings' => [$exists
-                                ? 'Listed in a side list only — existing member will be updated with this '.$kind
-                                : 'Listed in a side list but not found in any branch table or in the system'],
-                            'status' => $exists ? 'pending' : 'skipped',
-                        ]);
+        foreach ($references()->orderBy('id')->select(['account_no', 'data'])->cursor() as $reference) {
+            $entry = json_decode($reference->data, true);
+            $sideValues[$reference->account_no][$entry['kind']] ??= $entry['value'];
+        }
 
-                        continue;
-                    }
+        if ($sideValues !== []) {
+            // 2. Apply them to the member rows of this file.
+            $matchedAccounts = [];
 
-                    foreach ($matched as $row) {
-                        $data = $row->data;
-                        $warnings = $row->warnings ?? [];
+            ImportRow::query()
+                ->where('import_batch_id', $batch->id)
+                ->where('action', 'pending')
+                ->select(['id', 'account_no', 'data', 'warnings'])
+                ->chunkById(1000, function ($rows) use (&$matchedAccounts, $sideValues) {
+                    DB::transaction(function () use ($rows, &$matchedAccounts, $sideValues) {
+                        foreach ($rows as $row) {
+                            $side = $sideValues[$row->account_no] ?? null;
 
-                        match ($kind) {
-                            'flag' => $data['savings_account_status'] ??= $value,
-                            'terminal' => $data['terminal_status'] ??= $value,
-                            'segment' => $data['segment'] ??= $value,
-                            'balance' => $data['savings_balance'] ??= (float) $value,
-                        };
+                            if ($side === null) {
+                                continue;
+                            }
 
-                        if ($kind === 'segment') {
-                            $warnings = array_values(array_filter($warnings, fn (string $warning) => ! str_contains($warning, 'segmentation')));
+                            $matchedAccounts[$row->account_no] = true;
+                            [$data, $warnings] = $this->withSideValues($row->data, $row->warnings ?? [], $side);
+
+                            $row->update(['data' => $data, 'warnings' => $warnings]);
                         }
+                    });
+                });
 
-                        $row->update(['data' => $data, 'warnings' => $warnings]);
-                    }
+            // 3. Book-keep the side-list rows in bulk: applied, kept for an existing member, or dropped as noise.
+            $unmatched = array_map('strval', array_keys(array_diff_key($sideValues, $matchedAccounts)));
 
-                    $reference->update(['status' => 'skipped', 'member_id' => null, 'warnings' => ['Applied to sheet row '.$matched->first()->row_number]]);
+            foreach (array_chunk(array_map('strval', array_keys($matchedAccounts)), 1000) as $accounts) {
+                $references()->whereIn('account_no', $accounts)->update([
+                    'status' => 'skipped',
+                    'member_id' => null,
+                    'warnings' => json_encode(['Applied to this member\'s row in the branch sheet']),
+                ]);
+            }
+
+            foreach (array_chunk($unmatched, 1000) as $accounts) {
+                $existing = Member::withTrashed()->whereIn('account_no', $accounts)->pluck('id', 'account_no');
+
+                foreach ($existing as $accountNo => $memberId) {
+                    $references()->where('account_no', (string) $accountNo)->update([
+                        'member_id' => $memberId,
+                        'status' => 'pending',
+                        'warnings' => json_encode(['Listed in a side list only — existing member will be updated with this value']),
+                    ]);
                 }
-            });
+
+                $references()->whereIn('account_no', array_values(array_diff($accounts, array_map('strval', $existing->keys()->all()))))->delete();
+            }
+        }
 
         foreach ($sheets as $position => $sheet) {
             $sheets[$position]['dormancy_source'] = $hasDormancyInfo;
         }
 
         $batch->update(['sheets' => $sheets]);
+    }
+
+    /**
+     * Fill a member row from side-list values without overriding what the row already states.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  list<string>  $warnings
+     * @param  array<string, mixed>  $side  kind (flag|terminal|segment|balance) => value
+     * @return array{0: array<string, mixed>, 1: list<string>}
+     */
+    private function withSideValues(array $data, array $warnings, array $side): array
+    {
+        $data['savings_account_status'] ??= $side['flag'] ?? null;
+        $data['terminal_status'] ??= $side['terminal'] ?? null;
+        $data['segment'] ??= $side['segment'] ?? null;
+        $data['savings_balance'] ??= isset($side['balance']) ? (float) $side['balance'] : null;
+
+        if (isset($side['segment'])) {
+            $warnings = array_values(array_filter($warnings, fn (string $warning) => ! str_contains($warning, 'segmentation')));
+        }
+
+        return [$data, $warnings];
     }
 
     public function refreshCounts(ImportBatch $batch, ?string $status = null): ImportBatch
@@ -357,19 +428,26 @@ class MasterlistImportService
 
         $tally = ['created' => 0, 'updated' => 0, 'unchanged' => 0];
 
-        foreach ($rows as $row) {
-            try {
-                $result = DB::transaction(fn () => $this->importRow($batch, $row));
-                $tally[$result]++;
-            } catch (Throwable $exception) {
-                report($exception);
+        // One commit per chunk (each row is still its own savepoint) and no per-record audit entries:
+        // the batch, its source rows and the member change history are the import's trail.
+        DB::transaction(function () use ($batch, $rows, &$tally) {
+            AuditLog::withoutRecording(function () use ($batch, $rows, &$tally) {
+                foreach ($rows as $row) {
+                    try {
+                        // Acct. Numbers are matched across every branch, whoever runs the import, so no member is created twice.
+                        $result = Branch::withoutRestriction(fn () => DB::transaction(fn () => $this->importRow($batch, $row)));
+                        $tally[$result]++;
+                    } catch (Throwable $exception) {
+                        report($exception);
 
-                $row->update([
-                    'status' => 'skipped',
-                    'errors' => [...($row->errors ?? []), 'Import failed: '.$exception->getMessage()],
-                ]);
-            }
-        }
+                        $row->update([
+                            'status' => 'skipped',
+                            'errors' => [...($row->errors ?? []), 'Import failed: '.$exception->getMessage()],
+                        ]);
+                    }
+                }
+            });
+        });
 
         $batch->update([
             'processed_rows' => $batch->processed_rows + $rows->count(),
@@ -441,7 +519,13 @@ class MasterlistImportService
             } elseif (($data['terminal_status'] ?? null) === 'withdrawn') {
                 $member->status = 'withdrawn';
                 $member->withdrawn_at ??= $asOf;
-                $member->withdrawal_reason ??= 'Recorded in masterlist'.(isset($data['remarks']) ? " (remarks: {$data['remarks']})" : '');
+                $member->withdrawal_reason ??= isset($data['remarks']) && $this->statusText->isTransfer($data['remarks'])
+                    ? "Branch transfer — {$data['remarks']}"
+                    : 'Recorded in masterlist'.(isset($data['remarks']) ? " (remarks: {$data['remarks']})" : '');
+            } elseif (($data['terminal_status'] ?? null) === 'terminated') {
+                $member->status = 'terminated';
+                $member->terminated_at ??= $asOf;
+                $member->termination_reason ??= 'Recorded in masterlist'.(isset($data['remarks']) ? " (remarks: {$data['remarks']})" : '');
             }
         }
 
@@ -532,6 +616,84 @@ class MasterlistImportService
     public function cancel(ImportBatch $batch): void
     {
         $batch->update(['status' => 'cancelled']);
+    }
+
+    /**
+     * What deleting this import would remove (shown in the confirmation before anything is deleted).
+     *
+     * @return array{members: int, adjustments: int}
+     */
+    public function importedDataSummary(ImportBatch $batch): array
+    {
+        $createdMemberIds = $this->createdMemberIds($batch);
+
+        return [
+            'members' => Member::withTrashed()->whereIn('id', $createdMemberIds)->count(),
+            'adjustments' => SavingsTransaction::query()->where('import_batch_id', $batch->id)->whereNotIn('member_id', $createdMemberIds)->count(),
+        ];
+    }
+
+    /**
+     * Undo one imported file: permanently delete the members it added (their applications, savings entries,
+     * notices and history go with them), take back the balance adjustments it made to members that already
+     * existed, then remove the stored workbook and the import itself. Other details it updated on existing
+     * members (name, segment, category) are not rolled back.
+     *
+     * @return array{members: int, adjustments: int}
+     */
+    public function deleteImportedData(ImportBatch $batch): array
+    {
+        set_time_limit(0);
+
+        $summary = DB::transaction(function () use ($batch) {
+            $createdMemberIds = $this->createdMemberIds($batch);
+            $membersDeleted = 0;
+
+            foreach (array_chunk($createdMemberIds, 1000) as $ids) {
+                $membersDeleted += DB::table('members')->whereIn('id', $ids)->delete();
+            }
+
+            $adjustmentsReversed = 0;
+
+            AuditLog::withoutRecording(function () use ($batch, &$adjustmentsReversed) {
+                SavingsTransaction::query()
+                    ->where('import_batch_id', $batch->id)
+                    ->chunkById(500, function ($transactions) use (&$adjustmentsReversed) {
+                        foreach ($transactions as $transaction) {
+                            $transaction->delete();
+                            $adjustmentsReversed++;
+                        }
+                    });
+            });
+
+            $summary = ['members' => $membersDeleted, 'adjustments' => $adjustmentsReversed];
+
+            $batch->recordAudit('imported_data_deleted', ['file' => $batch->file_name, 'status' => $batch->status], $summary, 'Import and the data it added were deleted from Import History');
+            $batch->delete();
+
+            return $summary;
+        });
+
+        if ($batch->file_path) {
+            Storage::disk(self::DISK)->delete($batch->file_path);
+        }
+
+        return $summary;
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function createdMemberIds(ImportBatch $batch): array
+    {
+        return ImportRow::query()
+            ->where('import_batch_id', $batch->id)
+            ->where('result', 'created')
+            ->whereNotNull('member_id')
+            ->distinct()
+            ->pluck('member_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
     }
 
     /**

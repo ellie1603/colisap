@@ -3,17 +3,14 @@
 namespace App\Services\Colisap;
 
 use App\Filament\Pages\Monitoring;
-use App\Filament\Resources\ClaimResource;
 use App\Filament\Resources\MemberResource;
 use App\Models\Branch;
-use App\Models\Claim;
 use App\Models\Member;
 use App\Models\ReplenishmentNotice;
 use App\Services\Policy\PolicySettings;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Live monitoring figures for the dashboard, monitoring page, alerts and reports.
@@ -66,7 +63,10 @@ class MonitoringService
             ->get();
 
         $result = [];
-        $branchNames = Branch::query()->orderBy('sort_order')->pluck('name', 'id');
+        $branchNames = Branch::query()
+            ->when(Branch::restrictedId(), fn (Builder $query, int $branchId) => $query->whereKey($branchId))
+            ->orderBy('sort_order')
+            ->pluck('name', 'id');
 
         foreach ($branchNames as $name) {
             $result[$name] = collect(Member::STATUSES)->map(fn () => 0)->all();
@@ -105,49 +105,6 @@ class MonitoringService
         }
 
         return $result;
-    }
-
-    /**
-     * Participating members grouped by number of active beneficiaries.
-     *
-     * @return array<string, int>
-     */
-    public function beneficiaryCompliance(): array
-    {
-        $counts = DB::table('members')
-            ->leftJoinSub(
-                DB::table('beneficiaries')->select('member_id', DB::raw('count(*) as c'))->where('is_active', true)->whereNull('deleted_at')->groupBy('member_id'),
-                'b', 'b.member_id', '=', 'members.id',
-            )
-            ->whereNull('members.deleted_at')
-            ->whereNotIn('members.status', Member::TERMINAL_STATUSES)
-            ->selectRaw('COALESCE(b.c, 0) as beneficiaries, count(*) as total')
-            ->groupBy(DB::raw('COALESCE(b.c, 0)'))
-            ->pluck('total', 'beneficiaries');
-
-        $max = $this->policy->int('max_beneficiaries');
-        $result = ['None' => (int) ($counts[0] ?? 0)];
-
-        for ($i = 1; $i <= $max; $i++) {
-            $result[$i.' beneficiar'.($i === 1 ? 'y' : 'ies')] = (int) ($counts[$i] ?? 0);
-        }
-
-        $over = (int) $counts->filter(fn ($total, $beneficiaries) => (int) $beneficiaries > $max)->sum();
-
-        if ($over > 0) {
-            $result['Over '.$max] = $over;
-        }
-
-        return $result;
-    }
-
-    /**
-     * @param  Builder<Member>  $query
-     * @return Builder<Member>
-     */
-    public function withoutBeneficiaries(?Builder $query = null): Builder
-    {
-        return ($query ?? Member::query())->participating()->whereDoesntHave('activeBeneficiaries');
     }
 
     /**
@@ -254,16 +211,6 @@ class MonitoringService
     }
 
     /**
-     * @return array<string, int>
-     */
-    public function claimSummary(): array
-    {
-        $counts = Claim::query()->selectRaw('status, count(*) as total')->groupBy('status')->pluck('total', 'status');
-
-        return collect(Claim::STATUSES)->mapWithKeys(fn ($label, $status) => [$label => (int) ($counts[$status] ?? 0)])->all();
-    }
-
-    /**
      * Monitoring alerts with severity INFO / WARNING / CRITICAL.
      *
      * @return Collection<int, array{severity: string, title: string, description: string, count: int, url: ?string}>
@@ -279,9 +226,6 @@ class MonitoringService
             ['critical', 'Dormant — termination approaching', "Dormant members reaching termination within {$this->policy->int('dormancy_warning_days')} days.", $this->dormancyApproachingTermination($this->policy->int('dormancy_warning_days'))->count(), Monitoring::getUrl(['tab' => 'dormancy'])],
             ['warning', 'Replenishment deadline approaching', "Open notices due within {$warnDays} days.", $replenishment["Deadline within {$warnDays} days"], Monitoring::getUrl(['tab' => 'replenishment'])],
             ['warning', 'Savings below minimum', 'Participating members below their maintaining balance.', $this->belowMinimumBalance()->count(), Monitoring::getUrl(['tab' => 'replenishment'])],
-            ['warning', 'Beneficiary information incomplete', 'Participating members with no beneficiary.', $this->withoutBeneficiaries()->count(), Monitoring::getUrl(['tab' => 'beneficiaries'])],
-            ['warning', 'Claims requiring action', 'Mortuary claims submitted or under review.', Claim::whereIn('status', ['submitted', 'under_review'])->count(), ClaimResource::getUrl('index')],
-            ['info', 'Approved claims awaiting settlement', 'Approved claims not yet settled.', Claim::where('status', 'approved')->count(), ClaimResource::getUrl('index')],
             ['info', 'Waiting period ending soon', "Members becoming effective within {$window} days.", $this->becomingEffectiveWithin($window)->count(), Monitoring::getUrl(['tab' => 'effectivity'])],
             ['info', 'Upgrade eligibility', 'Members whose 90-day upgrade waiting period is complete.', $this->upgradeQuery('eligible')->count(), Monitoring::getUrl(['tab' => 'upgrades'])],
             ['info', 'Incomplete member information', 'Members without approval date or branch.', Member::query()->participating()->where(fn (Builder $q) => $q->whereNull('approval_date')->orWhereNull('branch_id'))->count(), MemberResource::getUrl('index')],

@@ -37,6 +37,10 @@ trait Auditable
      */
     public function recordAudit(string $action, ?array $oldValues, ?array $newValues, ?string $reason = null): void
     {
+        if (AuditLog::recordingPaused()) {
+            return;
+        }
+
         $hidden = $this->getHidden();
 
         AuditLog::create([

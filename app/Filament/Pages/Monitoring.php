@@ -10,6 +10,9 @@ use App\Services\Colisap\MemberStatusEngine;
 use App\Services\Colisap\MonitoringService;
 use App\Services\Policy\PolicyDefaults;
 use App\Services\Policy\PolicySettings;
+use App\Services\Sms\MonitoringSms;
+use App\Services\Sms\SmsGateway;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
@@ -43,7 +46,6 @@ class Monitoring extends Page implements HasTable
         'upgrades' => ['90-day upgrades', 'heroicon-m-arrow-trending-up'],
         'replenishment' => ['15-day replenishment', 'heroicon-m-bell-alert'],
         'dormancy' => ['Dormancy', 'heroicon-m-pause-circle'],
-        'beneficiaries' => ['Beneficiary compliance', 'heroicon-m-user-group'],
     ];
 
     #[Url]
@@ -61,6 +63,23 @@ class Monitoring extends Page implements HasTable
         }
     }
 
+    /**
+     * Switch views in place (no page reload); each view has its own columns, filters and sort, so the table is rebuilt.
+     */
+    public function switchTab(string $tab): void
+    {
+        if (! array_key_exists($tab, self::TABS) || $tab === $this->tab) {
+            return;
+        }
+
+        $this->tab = $tab;
+        $this->tableSearch = '';
+        $this->tableSortColumn = null;
+        $this->tableSortDirection = null;
+        $this->deselectAllTableRecords();
+        $this->resetTable();
+    }
+
     private function policy(): PolicySettings
     {
         return app(PolicySettings::class);
@@ -69,6 +88,11 @@ class Monitoring extends Page implements HasTable
     private function canManage(): bool
     {
         return Auth::user()?->can('monitoring.manage') ?? false;
+    }
+
+    private function canSendSms(): bool
+    {
+        return Auth::user()?->can('monitoring.send_sms') ?? false;
     }
 
     /**
@@ -83,7 +107,6 @@ class Monitoring extends Page implements HasTable
             'upgrades' => $monitoring->upgradeQuery('eligible')->count() + $monitoring->upgradeQuery('pending')->count(),
             'replenishment' => ReplenishmentNotice::where('status', 'open')->count(),
             'dormancy' => Member::where('status', 'dormant')->count(),
-            'beneficiaries' => $monitoring->withoutBeneficiaries()->count(),
         ];
     }
 
@@ -93,7 +116,6 @@ class Monitoring extends Page implements HasTable
             'upgrades' => $this->upgradesTable($table),
             'replenishment' => $this->replenishmentTable($table),
             'dormancy' => $this->dormancyTable($table),
-            'beneficiaries' => $this->beneficiariesTable($table),
             default => $this->effectivityTable($table),
         };
     }
@@ -152,6 +174,9 @@ class Monitoring extends Page implements HasTable
                         ->where('approval_date', '<=', Carbon::today()->subDays($days)->addDays((int) $window)->toDateString()))),
                 $this->branchFilter(),
             ])
+            ->headerActions([$this->smsToAllAction()])
+            ->actions([$this->smsAction()])
+            ->bulkActions([$this->smsBulkAction()])
             ->defaultSort('approval_date')
             ->recordUrl(fn (Member $record) => MemberResource::getUrl('view', ['record' => $record]));
     }
@@ -192,7 +217,9 @@ class Monitoring extends Page implements HasTable
                     }),
                 $this->branchFilter(),
             ])
+            ->headerActions([$this->smsToAllAction()])
             ->actions([
+                $this->smsAction(),
                 Tables\Actions\Action::make('apply')
                     ->label('Apply 60K')
                     ->icon('heroicon-o-check-badge')
@@ -208,6 +235,7 @@ class Monitoring extends Page implements HasTable
                     ->visible(fn () => $this->canManage())
                     ->requiresConfirmation()
                     ->action(fn (Collection $records) => $this->applyUpgrades($records)),
+                $this->smsBulkAction(),
             ])
             ->defaultSort('category_upgrade_requested_at')
             ->recordUrl(fn (Member $record) => MemberResource::getUrl('view', ['record' => $record]));
@@ -222,6 +250,115 @@ class Monitoring extends Page implements HasTable
             ->title("{$applied} member(s) moved to 60K")
             ->body($skipped ? "{$skipped} skipped — not yet eligible or savings below the 60K maintaining balance." : null)
             ->success()->send();
+    }
+
+    // ------------------------------------------------------------ SMS reminders
+
+    /**
+     * Text one member. The view's reminder is pre-filled and can be reworded before sending.
+     */
+    private function smsAction(): Tables\Actions\Action
+    {
+        return Tables\Actions\Action::make('sendSms')
+            ->label('Send SMS')
+            ->icon('heroicon-o-chat-bubble-left-ellipsis')
+            ->color('info')
+            ->visible(fn () => $this->canSendSms())
+            ->disabled(fn (Member|ReplenishmentNotice $record) => $this->mobileNumberOf($record) === null)
+            ->tooltip(fn (Member|ReplenishmentNotice $record) => $this->mobileNumberOf($record) === null ? 'No mobile number on file' : null)
+            ->modalHeading(fn (Member|ReplenishmentNotice $record) => 'Send SMS to '.$this->memberOf($record)?->account_name)
+            ->modalSubmitActionLabel('Send SMS')
+            ->fillForm(fn (Member|ReplenishmentNotice $record) => ['message' => app(MonitoringSms::class)->message($this->tab, $record)])
+            ->form([
+                Placeholder::make('to')
+                    ->label('Mobile number')
+                    ->content(fn (Member|ReplenishmentNotice $record) => $this->mobileNumberOf($record)),
+                Textarea::make('message')
+                    ->rows(5)
+                    ->required()
+                    ->maxLength(480)
+                    ->helperText('About 160 characters per SMS; a longer message is sent as several parts.'),
+            ])
+            ->action(fn (Member|ReplenishmentNotice $record, array $data) => $this->sendSms([$record], $data['message']));
+    }
+
+    /**
+     * Text the ticked rows — each member gets this view's reminder with their own name, dates and amounts.
+     */
+    private function smsBulkAction(): Tables\Actions\BulkAction
+    {
+        return Tables\Actions\BulkAction::make('sendSmsToSelected')
+            ->label('Send SMS to selected')
+            ->icon('heroicon-o-chat-bubble-left-ellipsis')
+            ->color('info')
+            ->visible(fn () => $this->canSendSms())
+            ->requiresConfirmation()
+            ->modalHeading('Send SMS to the selected members?')
+            ->modalDescription('Each member receives the "'.self::TABS[$this->tab][0].'" reminder with their own name, dates and amounts. Members without a mobile number are skipped.')
+            ->modalSubmitActionLabel('Send SMS')
+            ->deselectRecordsAfterCompletion()
+            ->action(fn (Collection $records) => $this->sendSms($records));
+    }
+
+    /**
+     * Text everyone currently listed (the view with its search and filters applied).
+     */
+    private function smsToAllAction(): Tables\Actions\Action
+    {
+        return Tables\Actions\Action::make('sendSmsToAll')
+            ->label('Send SMS to all')
+            ->icon('heroicon-o-megaphone')
+            ->color('info')
+            ->visible(fn () => $this->canSendSms())
+            ->requiresConfirmation()
+            ->modalHeading(fn () => 'Send SMS to all '.number_format($this->getFilteredTableQuery()->count()).' listed?')
+            ->modalDescription('Everyone in this list (with the current search and filters) receives the "'.self::TABS[$this->tab][0].'" reminder with their own name, dates and amounts. Members without a mobile number are skipped.')
+            ->modalSubmitActionLabel('Send SMS to all')
+            ->action(fn () => $this->sendSms($this->getFilteredTableQuery()->get()));
+    }
+
+    private function memberOf(Member|ReplenishmentNotice $record): ?Member
+    {
+        return $record instanceof Member ? $record : $record->member;
+    }
+
+    private function mobileNumberOf(Member|ReplenishmentNotice $record): ?string
+    {
+        return SmsGateway::normalizeNumber($this->memberOf($record)?->contact_number);
+    }
+
+    /**
+     * @param  iterable<Member|ReplenishmentNotice>  $records
+     */
+    private function sendSms(iterable $records, ?string $message = null): void
+    {
+        abort_unless($this->canSendSms(), 403);
+
+        if (! app(SmsGateway::class)->isConfigured()) {
+            Notification::make()
+                ->title('SMS is not set up yet')
+                ->body('Add the eTxtMo API key (ETXTMO_API_KEY) to the .env file, then try again.')
+                ->danger()->send();
+
+            return;
+        }
+
+        set_time_limit(0);
+
+        $summary = app(MonitoringSms::class)->send($this->tab, $records, $message);
+
+        $details = array_filter([
+            $summary['no_number'] ? "{$summary['no_number']} skipped — no mobile number on file." : null,
+            $summary['not_applicable'] ? "{$summary['not_applicable']} skipped — nothing to remind in this view." : null,
+            $summary['failed'] ? "{$summary['failed']} not sent: ".implode('; ', array_slice($summary['errors'], 0, 3)).($summary['failed'] > 3 ? '…' : '') : null,
+        ]);
+
+        Notification::make()
+            ->title($summary['sent'] === 0 ? 'No SMS was sent' : "{$summary['sent']} SMS queued for sending")
+            ->body($details ? implode(' ', $details) : null)
+            ->status($summary['sent'] === 0 ? 'danger' : ($summary['failed'] ? 'warning' : 'success'))
+            ->persistent($details !== [])
+            ->send();
     }
 
     private function replenishmentTable(Table $table): Table
@@ -261,7 +398,10 @@ class Monitoring extends Page implements HasTable
                     ->query(fn (Builder $query) => $query->where('status', 'open')->where('deadline', '<', Carbon::today()->toDateString())),
                 $this->branchFilter('member'),
             ])
+            ->headerActions([$this->smsToAllAction()])
+            ->bulkActions([$this->smsBulkAction()])
             ->actions([
+                $this->smsAction(),
                 Tables\Actions\Action::make('recheck')
                     ->label('Re-check now')
                     ->icon('heroicon-o-arrow-path')
@@ -318,32 +458,10 @@ class Monitoring extends Page implements HasTable
                     ->query(fn (Builder $query) => $query->whereIn('id', app(MonitoringService::class)->dormancyApproachingTermination($this->policy()->int('dormancy_warning_days'))->select('id'))),
                 $this->branchFilter(),
             ])
+            ->headerActions([$this->smsToAllAction()])
+            ->actions([$this->smsAction()])
+            ->bulkActions([$this->smsBulkAction()])
             ->defaultSort('dormant_since')
-            ->recordUrl(fn (Member $record) => MemberResource::getUrl('view', ['record' => $record]));
-    }
-
-    private function beneficiariesTable(Table $table): Table
-    {
-        return $table
-            ->query(app(MonitoringService::class)->withoutBeneficiaries(Member::query()->with('branch')))
-            ->heading('Beneficiary information incomplete')
-            ->description('Participating members with no active beneficiary. Each member needs '.$this->policy()->int('min_beneficiaries').'–'.$this->policy()->int('max_beneficiaries').' beneficiaries.')
-            ->columns([
-                ...$this->memberColumns(),
-                Tables\Columns\TextColumn::make('status')->badge()
-                    ->formatStateUsing(fn (string $state) => Member::STATUSES[$state] ?? $state)
-                    ->color(fn (string $state) => Member::statusColor($state)),
-                Tables\Columns\TextColumn::make('contact_number')->placeholder('—')->visibleFrom('md'),
-            ])
-            ->filters([$this->branchFilter()])
-            ->actions([
-                Tables\Actions\Action::make('add')
-                    ->label('Add beneficiaries')
-                    ->icon('heroicon-o-user-plus')
-                    ->visible(fn () => Auth::user()?->can('beneficiaries.manage') ?? false)
-                    ->url(fn (Member $record) => MemberResource::getUrl('edit', ['record' => $record])),
-            ])
-            ->defaultSort('account_name')
             ->recordUrl(fn (Member $record) => MemberResource::getUrl('view', ['record' => $record]));
     }
 }

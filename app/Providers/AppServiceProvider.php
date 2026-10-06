@@ -23,7 +23,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        // The Super Admin has every permission; everyone else is checked against role permissions.
-        Gate::before(fn (User $user) => $user->hasRole(Permissions::SUPER_ADMIN) ? true : null);
+        // The Administrator has every permission; everyone else is checked against role permissions.
+        Gate::before(fn (User $user) => $user->hasRole(Permissions::ADMIN) ? true : null);
     }
 }

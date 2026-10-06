@@ -106,8 +106,7 @@ class ApplicationResource extends Resource
                 Tables\Actions\EditAction::make()->label('Open'),
                 Tables\Actions\ViewAction::make()->hidden(fn (Application $record) => static::canEdit($record)),
             ])
-            ->defaultSort('application_date', 'desc')
-            ->poll('60s');
+            ->defaultSort('application_date', 'desc');
     }
 
     public static function getPages(): array

@@ -10,7 +10,7 @@ use InvalidArgumentException;
 
 /**
  * Single source of truth for configurable COLISAP policy values.
- * Values live in `policy_settings` (editable by the Super Admin) and fall back to PolicyDefaults.
+ * Values live in `policy_settings` (editable by the Administrator) and fall back to PolicyDefaults.
  */
 class PolicySettings
 {
@@ -104,17 +104,6 @@ class PolicySettings
     public function minimumBalanceFor(?string $category): float
     {
         return $category === '60000' ? $this->decimal('min_balance_60k') : $this->decimal('min_balance_40k');
-    }
-
-    public function coopSharePercentFor(?string $segment): float
-    {
-        return match ($segment) {
-            'D' => $this->decimal('coop_share_diamond'),
-            'G' => $this->decimal('coop_share_gold'),
-            'S' => $this->decimal('coop_share_silver'),
-            'R' => $this->decimal('coop_share_regular'),
-            default => 0.0,
-        };
     }
 
     private function cast(string $key, mixed $value): mixed

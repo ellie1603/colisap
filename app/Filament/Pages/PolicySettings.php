@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * Super Admin editing of every configurable COLISAP policy value. Each change is audit-logged.
+ * Administrator editing of every configurable COLISAP policy value. Each change is audit-logged.
  */
 class PolicySettings extends Page
 {
@@ -80,12 +80,6 @@ class PolicySettings extends Page
     public function save(PolicySettingsService $policy): void
     {
         $data = $this->form->getState();
-
-        if (($data['max_beneficiaries'] ?? 0) < ($data['min_beneficiaries'] ?? 0)) {
-            Notification::make()->title('Maximum beneficiaries must be at least the minimum')->danger()->send();
-
-            return;
-        }
 
         $policy->update($data);
 

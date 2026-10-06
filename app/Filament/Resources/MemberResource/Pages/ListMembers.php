@@ -34,6 +34,10 @@ class ListMembers extends ListRecords
                 ->modalDescription(fn (ListMembers $livewire): string => number_format($livewire->getTableQueryForExport()->count()).' member(s) match the current tab, search and filters.')
                 ->modalSubmitActionLabel('Download')
                 ->form([
+                    Forms\Components\Radio::make('layout')
+                        ->options(MemberExporter::LAYOUTS)
+                        ->default('organized')
+                        ->required(),
                     Forms\Components\Radio::make('format')
                         ->options(MemberExporter::FORMATS)
                         ->default('xlsx')
@@ -41,7 +45,7 @@ class ListMembers extends ListRecords
                         ->required(),
                 ])
                 ->action(fn (array $data, ListMembers $livewire) => app(MemberExporter::class)
-                    ->download($livewire->getTableQueryForExport(), $data['format'])),
+                    ->download($livewire->getTableQueryForExport(), $data['format'], $data['layout'] ?? 'organized')),
             Actions\CreateAction::make()->label('Add member'),
         ];
     }

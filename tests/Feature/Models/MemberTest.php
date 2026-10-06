@@ -2,10 +2,8 @@
 
 namespace Tests\Feature\Models;
 
-use App\Models\Beneficiary;
 use App\Models\Branch;
 use App\Models\Member;
-use App\Services\Policy\PolicySettings;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use RuntimeException;
@@ -52,27 +50,14 @@ class MemberTest extends TestCase
         $this->assertSame(['Barbaza', 'Kalibo', 'Correction'], [$history->firstWhere('field', 'branch')->old_value, $history->firstWhere('field', 'branch')->new_value, $history->firstWhere('field', 'branch')->reason]);
     }
 
-    public function test_eligibility_requires_active_status_minimum_balance_and_beneficiaries(): void
+    public function test_eligibility_requires_active_status_and_minimum_balance(): void
     {
         $member = Member::factory()->create(['savings_balance' => 500]);
-        $this->assertSame(['Beneficiary information incomplete'], $member->eligibilityIssues());
-
-        Beneficiary::factory()->for($member)->create(['share_percentage' => 100]);
-        $this->assertTrue($member->fresh()->isEligible());
+        $this->assertSame([], $member->eligibilityIssues());
+        $this->assertTrue($member->isEligible());
 
         $member->update(['savings_balance' => 499.99]);
         $this->assertFalse($member->fresh()->isEligible());
-    }
-
-    public function test_beneficiary_limits_follow_policy_settings(): void
-    {
-        $member = Member::factory()->create();
-        Beneficiary::factory()->for($member)->count(4)->create(['share_percentage' => 25]);
-
-        $this->assertFalse($member->hasCompleteBeneficiaries(), 'Four beneficiaries exceed the default maximum of 3.');
-
-        app(PolicySettings::class)->update(['max_beneficiaries' => 4]);
-        $this->assertTrue($member->fresh()->hasCompleteBeneficiaries());
     }
 
     public function test_only_active_forty_k_members_can_request_an_upgrade(): void

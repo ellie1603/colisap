@@ -60,7 +60,7 @@ class WorkbookParser
      * @var array<string, list<string>>
      */
     public const HEADER_ALIASES = [
-        'account_no' => ['acctnumber', 'acctno', 'accountnumber', 'accountno', 'accno', 'acctnum', 'accountnum', 'memberno', 'membersno', 'memberid', 'idno', 'cid', 'cidno', 'savingsacctno', 'saacctno', 'sano'],
+        'account_no' => ['acctnumber', 'acctno', 'acctcode', 'accountcode', 'cifkey', 'cif', 'accountnumber', 'accountno', 'accno', 'acctnum', 'accountnum', 'memberno', 'membersno', 'memberid', 'idno', 'cid', 'cidno', 'savingsacctno', 'saacctno', 'sano'],
         'full_name' => ['accountname', 'name', 'fullname', 'membername', 'membersname', 'nameofmember', 'nameofmembers', 'completename'],
         'last_name' => ['lastname', 'surname', 'familyname', 'lname'],
         'first_name' => ['firstname', 'givenname', 'fname'],
@@ -96,6 +96,12 @@ class WorkbookParser
 
     private const HEADER_SCAN_ROWS = 25;
 
+    /**
+     * Masterlists are often formatted down to Excel's last row (1,048,576). Reading stops after this many
+     * consecutive blank rows, which keeps a large workbook to seconds instead of many minutes.
+     */
+    private const MAX_CONSECUTIVE_BLANK_ROWS = 1000;
+
     public function __construct(
         private NameParser $nameParser,
         private StatusTextMapper $statusTextMapper,
@@ -104,9 +110,9 @@ class WorkbookParser
     // ------------------------------------------------------------------ Workbook structure
 
     /**
-     * Inspect every sheet: header row, column mapping, suggested branch and data-row count.
+     * Inspect every sheet: header row, column mapping and suggested branch.
      *
-     * @return list<array{index: int, name: string, header_row: ?int, headers: array<int, string>, columns: array<string, int>, branch_id: ?int, branch_name: ?string, data_rows: int, include: bool}>
+     * @return list<array{index: int, name: string, header_row: ?int, headers: array<int, string>, columns: array<string, int>, branch_id: ?int, branch_name: ?string, data_rows: ?int, include: bool}>
      */
     public function detectSheets(string $path): array
     {
@@ -116,13 +122,13 @@ class WorkbookParser
         try {
             foreach ($reader->getSheetIterator() as $index => $sheet) {
                 $scanned = [];
-                $count = 0;
 
+                // Only the top of each sheet is read here; rows are counted while staging, so analysis stays instant.
                 foreach ($sheet->getRowIterator() as $row) {
-                    $count++;
+                    $scanned[] = $row->toArray();
 
-                    if ($count <= self::HEADER_SCAN_ROWS) {
-                        $scanned[] = $row->toArray();
+                    if (count($scanned) >= self::HEADER_SCAN_ROWS) {
+                        break;
                     }
                 }
 
@@ -138,8 +144,8 @@ class WorkbookParser
                     'columns' => $columns,
                     'branch_id' => $branch?->id,
                     'branch_name' => $branch?->name,
-                    'data_rows' => $headerIndex === null ? 0 : max(0, $count - $headerIndex - 1),
-                    'include' => $headerIndex !== null && isset($columns['account_no']) && $branch !== null,
+                    'data_rows' => null,
+                    'include' => $headerIndex !== null && isset($columns['account_no']) && $branch !== null && $sheet->isVisible(),
                 ];
             }
         } finally {
@@ -165,13 +171,28 @@ class WorkbookParser
                 }
 
                 $rowNumber = 0;
+                $blankStreak = 0;
 
                 foreach ($sheet->getRowIterator() as $row) {
                     $rowNumber++;
 
-                    if ($rowNumber > $headerRow) {
-                        yield $rowNumber => $row->toArray();
+                    if ($rowNumber <= $headerRow) {
+                        continue;
                     }
+
+                    $cells = $row->toArray();
+
+                    if ($this->isBlankRow($cells)) {
+                        if (++$blankStreak >= self::MAX_CONSECUTIVE_BLANK_ROWS) {
+                            break;
+                        }
+
+                        continue;
+                    }
+
+                    $blankStreak = 0;
+
+                    yield $rowNumber => $cells;
                 }
 
                 break;
@@ -445,7 +466,7 @@ class WorkbookParser
         }
 
         $text = preg_replace('/\s+/', '', $this->cellToString($value)) ?? '';
-        $text = ltrim($text, "'");
+        $text = trim($text, "'`\"");
 
         return $text === '' ? null : $text;
     }
@@ -539,6 +560,9 @@ class WorkbookParser
             return $this->parseDate((float) $text);
         }
 
+        // Hand-typed dates such as "6/ 6/2025" or "6 - 6 - 2025".
+        $text = preg_replace('/\s*([\/\-])\s*/', '$1', $text) ?? $text;
+
         foreach (['m/d/Y', 'm/d/y', 'n/j/Y', 'n/j/y', 'm-d-Y', 'Y-m-d', 'd-M-Y', 'd-M-y', 'M d, Y', 'F d, Y', 'M. d, Y'] as $format) {
             try {
                 $date = Carbon::createFromFormat('!'.$format, $text);
@@ -610,9 +634,28 @@ class WorkbookParser
         return self::isExcelArtifact($text) ? '' : $text;
     }
 
+    /**
+     * Excel error values, and formulas saved without a computed result (e.g. "=VLOOKUP(B7,V:X,3,FALSE)" or a bare "="),
+     * are not data. Reading such a formula as text would turn "=VLOOKUP(B7,…)" into the number 73.
+     */
     public static function isExcelArtifact(string $text): bool
     {
-        return (bool) preg_match('/^#+$|^#(N\/A|VALUE!|REF!|DIV\/0!|NAME\?|NUM!|NULL!|SPILL!|CALC!|GETTING_DATA)$/i', $text);
+        return str_starts_with($text, '=')
+            || (bool) preg_match('/^#+$|^#(N\/A|VALUE!|REF!|DIV\/0!|NAME\?|NUM!|NULL!|SPILL!|CALC!|GETTING_DATA)$/i', $text);
+    }
+
+    /**
+     * @param  array<int, mixed>  $cells
+     */
+    private function isBlankRow(array $cells): bool
+    {
+        foreach ($cells as $cell) {
+            if ($this->cellToString($cell) !== '') {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

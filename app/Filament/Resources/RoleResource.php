@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Auth;
 use Spatie\Permission\Models\Role;
 
 /**
- * Role & permission management (Super Admin only). The Super Admin role always has every permission.
+ * Role & permission management (Administrator only). The Administrator role always has every permission.
  */
 class RoleResource extends Resource
 {
@@ -36,7 +36,7 @@ class RoleResource extends Resource
 
     public static function canEdit(Model $record): bool
     {
-        return static::canAccess() && $record->name !== Permissions::SUPER_ADMIN;
+        return static::canAccess() && $record->name !== Permissions::ADMIN;
     }
 
     public static function canDelete(Model $record): bool
@@ -76,7 +76,7 @@ class RoleResource extends Resource
                 Tables\Columns\TextColumn::make('name')
                     ->formatStateUsing(fn (string $state) => Permissions::ROLE_LABELS[$state] ?? $state),
                 Tables\Columns\TextColumn::make('permissions_count')->label('Permissions')
-                    ->formatStateUsing(fn (Role $record, $state) => $record->name === Permissions::SUPER_ADMIN ? 'All' : $state),
+                    ->formatStateUsing(fn (Role $record, $state) => $record->name === Permissions::ADMIN ? 'All' : $state),
                 Tables\Columns\TextColumn::make('users_count')->label('Users'),
             ])
             ->actions([

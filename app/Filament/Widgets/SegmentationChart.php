@@ -6,6 +6,8 @@ class SegmentationChart extends ColisapChart
 {
     protected static ?string $heading = 'Segmentation';
 
+    protected static ?string $description = 'Participating members by tier.';
+
     protected int|string|array $columnSpan = 1;
 
     protected function getType(): string
@@ -17,6 +19,6 @@ class SegmentationChart extends ColisapChart
     {
         $values = $this->monitoring()->segmentCounts();
 
-        return $this->single('Participants', $values, ['#3B3FA6', '#F59E0B', '#94A3B8', '#0EA5E9', '#E5E7EB']);
+        return $this->single('Participants', $values, [self::INDIGO, self::YELLOW, '#94A3B8', self::SKY, '#E2E8F0']);
     }
 }

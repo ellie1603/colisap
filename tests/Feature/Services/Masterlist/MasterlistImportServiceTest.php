@@ -2,9 +2,13 @@
 
 namespace Tests\Feature\Services\Masterlist;
 
+use App\Models\Application;
+use App\Models\AuditLog;
 use App\Models\Branch;
 use App\Models\ImportBatch;
+use App\Models\ImportRow;
 use App\Models\Member;
+use App\Models\SavingsTransaction;
 use App\Services\Masterlist\MasterlistImportService;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Storage;
@@ -187,5 +191,77 @@ class MasterlistImportServiceTest extends TestCase
         $this->assertSame(['completed', 1200, 1200], [$batch->status, $batch->created_count, Member::count()]);
         $this->assertSame('00102000007', Member::where('account_name', 'MEMBER7, TEST')->value('account_no'));
         $this->assertSame(1200, Member::where('branch_id', Branch::where('name', 'Molo')->value('id'))->where('status', 'active')->count());
+    }
+
+    public function test_messy_natcco_masterlist_with_unsaved_formulas_side_tables_and_remarks_is_organized(): void
+    {
+        // Mirrors the real NATCCO export: Segmentation / Savings columns are VLOOKUP formulas saved without results,
+        // the real values live in side tables (M:O segmentation, Q:S balances, U:W status), and one side table
+        // carries an extra leading zero on its account numbers.
+        $row = fn (array $main, array $side = []) => array_replace(array_fill(0, 23, ''), $main, $side);
+        $vlookups = fn (int $r) => [3 => "=VLOOKUP(B{$r},M:O,3,FALSE)", 7 => '=', 8 => '=', 9 => "=VLOOKUP(B{$r},Q:S,3,FALSE)"];
+
+        $batch = $this->stage(['Janiuay' => $this->sheet(
+            $row([1 => '01001000011', 2 => 'JUAN, PEDRO A.', 4 => 'COLISAP40000', 5 => '2016-09-02'] + $vlookups(5), [12 => 'SEGMENTATION', 16 => 'SAVINGS BALANCES', 20 => 'STATUS']),
+            $row([0 => 'Transferred to Sara', 1 => '01001000012', 2 => 'SANTOS, MARIA', 4 => 'COLISAP60000', 5 => '2015-06-09'] + $vlookups(6),
+                [12 => '001001000011', 13 => 'JUAN, PEDRO A', 14 => 'G', 16 => '01001000011', 17 => 'JUAN, PEDRO A.', 18 => 1234.5, 20 => '01001000014', 21 => 'REYES, ANA', 22 => 'w.draw']),
+            $row([0 => 'deactivated 7-20-26', 1 => '01001000013', 2 => 'CRUZ, JOSE', 4 => 'COLISAP40000', 5 => '2014-07-31'] + $vlookups(7),
+                [16 => '01001000012', 17 => 'SANTOS, MARIA', 18 => 2500]),
+            $row([1 => '01001000014', 2 => 'REYES, ANA', 4 => 'COLISAP40000', 5 => '6/ 6/2025'] + $vlookups(8)),
+        )]);
+
+        $this->assertSame([4, 0], [$batch->new_rows, $batch->invalid_rows]);
+        $this->import($batch);
+
+        $members = Member::orderBy('account_no')->get()->keyBy('account_no');
+
+        $this->assertSame(['G', '1234.50'], [$members['01001000011']->segment, $members['01001000011']->savings_balance], 'Side-table values win over unsaved formulas, even with an extra leading zero.');
+        $this->assertSame('2500.00', $members['01001000012']->savings_balance, 'The text "=VLOOKUP(B6,…)" is never read as a balance.');
+        $this->assertSame(['withdrawn', 'terminated', 'withdrawn'], [$members['01001000012']->status, $members['01001000013']->status, $members['01001000014']->status]);
+        $this->assertStringContainsString('Branch transfer', $members['01001000012']->withdrawal_reason);
+        $this->assertSame('2025-06-06', $members['01001000014']->approval_date->toDateString());
+        $this->assertSame(['60000', 'Janiuay'], [$members['01001000012']->category, $members['01001000012']->branch->name]);
+    }
+
+    public function test_deleting_an_import_removes_the_members_it_added_and_takes_back_its_balance_changes(): void
+    {
+        $existing = Member::factory()->create(['account_no' => '00101959720', 'savings_balance' => 500]);
+        $untouched = Member::factory()->create(['account_no' => '00109999999']);
+
+        $batch = $this->import($this->stage(['Barbaza' => $this->sheet(
+            ['', '00101959720', 'DELA CRUZ, JUAN A.', 'G', 'COLISAP40000', '6/3/1998', '', 10338, 'qualified', 800, 'for upload'],
+            ['', '00101959721', 'SANTOS, MARIA B.', 'D', 'COLISAP40000', '6/3/1999', '', 10, 'qualified', 900, 'for upload'],
+        )]));
+
+        $added = Member::where('account_no', '00101959721')->sole();
+        $this->assertSame('800.00', $existing->fresh()->savings_balance);
+        Storage::disk('local')->assertExists($batch->file_path);
+
+        $service = app(MasterlistImportService::class);
+        $this->assertSame(['members' => 1, 'adjustments' => 1], $service->importedDataSummary($batch));
+        $this->assertSame(['members' => 1, 'adjustments' => 1], $service->deleteImportedData($batch));
+
+        $this->assertDatabaseMissing('members', ['id' => $added->id]);
+        $this->assertSame(0, Application::where('member_id', $added->id)->count() + SavingsTransaction::where('member_id', $added->id)->count());
+        $this->assertSame('500.00', $existing->fresh()->savings_balance, 'The balance change made by this file is taken back.');
+        $this->assertNotNull($untouched->fresh());
+        $this->assertSame([0, 0], [ImportBatch::count(), ImportRow::count()]);
+        Storage::disk('local')->assertMissing($batch->file_path);
+        $this->assertTrue(AuditLog::where('action', 'imported_data_deleted')->exists());
+    }
+
+    public function test_bulk_import_keeps_its_trail_without_one_audit_entry_per_record(): void
+    {
+        $batch = $this->import($this->stage(['Barbaza' => $this->sheet(
+            ['', '00101959720', 'DELA CRUZ, JUAN A.', 'G', 'COLISAP40000', '6/3/1998', '', 10338, 'qualified', 800, 'for upload'],
+            ['', '00101959721', 'SANTOS, MARIA B.', 'D', 'COLISAP40000', '6/3/1999', '', 10, 'qualified', 900, 'for upload'],
+        )]));
+
+        $member = Member::where('account_no', '00101959720')->sole();
+
+        $this->assertSame(0, AuditLog::whereIn('auditable_type', [Member::class, SavingsTransaction::class, Application::class])->count());
+        $this->assertSame([$batch->id, 'Barbaza', 5], [$member->import_batch_id, $member->source_sheet, $member->source_row], 'Each member points back to its source row.');
+        $this->assertTrue($member->histories()->where('source', 'import')->exists(), 'Status changes are still recorded in the member history.');
+        $this->assertFalse(AuditLog::recordingPaused(), 'Auditing resumes after the import chunk.');
     }
 }

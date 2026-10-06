@@ -47,8 +47,17 @@ class User extends Authenticatable implements FilamentUser
         return $this->belongsTo(Branch::class);
     }
 
-    public function isSuperAdmin(): bool
+    public function isAdministrator(): bool
     {
-        return $this->hasRole(Permissions::SUPER_ADMIN);
+        return $this->hasRole(Permissions::ADMIN);
+    }
+
+    /**
+     * The only branch whose data this user may see: staff with a home branch are limited to it,
+     * while Administrators and staff without a home branch see every branch (null).
+     */
+    public function restrictedBranchId(): ?int
+    {
+        return $this->branch_id && ! $this->isAdministrator() ? (int) $this->branch_id : null;
     }
 }

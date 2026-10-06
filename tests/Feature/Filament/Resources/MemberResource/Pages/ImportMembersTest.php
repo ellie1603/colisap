@@ -7,6 +7,7 @@ use App\Filament\Resources\MemberResource\Pages\ImportMembers;
 use App\Models\Branch;
 use App\Models\ImportBatch;
 use App\Models\Member;
+use App\Models\User;
 use App\Services\Access\Permissions;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -50,10 +51,10 @@ class ImportMembersTest extends TestCase
 
         $page = Livewire::test(ImportMembers::class)
             ->set('upload.file', $this->workbookUpload())
-            ->set('upload.as_of_date', '2026-09-22')
             ->call('analyze');
 
         $batch = ImportBatch::sole();
+        $this->assertTrue($batch->as_of_date->isToday(), 'Balances are dated to the upload day automatically.');
         $this->assertSame(['Barbaza', 'President Roxas', null], array_column($batch->sheets, 'branch_name'));
         $page->assertSet('mapping.2.include', false);
 
@@ -82,6 +83,42 @@ class ImportMembersTest extends TestCase
         $this->assertSame('President Roxas', Member::where('account_no', '00101959722')->first()->branch->name);
     }
 
+    public function test_selected_rows_can_be_deleted_from_an_import_before_it_is_written(): void
+    {
+        Storage::fake('local');
+        $this->actingAsRole(Permissions::CRS);
+
+        $page = Livewire::test(ImportMembers::class)
+            ->set('upload.file', $this->workbookUpload())
+            ->call('analyze')
+            ->call('validateMapping');
+
+        while ($page->get('staging')) {
+            $page->call('stageNext');
+        }
+
+        $batch = ImportBatch::sole();
+        $unwanted = $batch->rows()->where('account_no', '00101959721')->sole();
+        $invalid = $batch->rows()->where('action', 'invalid')->sole();
+
+        $page->assertTableBulkActionVisible('remove')
+            ->callTableBulkAction('remove', [$unwanted, $invalid])
+            ->assertNotified('2 rows deleted from this import')
+            ->assertCanNotSeeTableRecords([$unwanted, $invalid]);
+
+        $batch->refresh();
+        $this->assertSame([2, 0], [$batch->new_rows, $batch->invalid_rows]);
+
+        $page->call('startImport');
+
+        while ($batch->refresh()->status === 'importing') {
+            $page->call('importNext');
+        }
+
+        $this->assertSame(['00101959720', '00101959722'], Member::orderBy('account_no')->pluck('account_no')->all());
+        $page->assertTableBulkActionHidden('remove');
+    }
+
     public function test_sheet_without_a_branch_must_be_mapped_before_validation(): void
     {
         Storage::fake('local');
@@ -89,7 +126,6 @@ class ImportMembersTest extends TestCase
 
         $page = Livewire::test(ImportMembers::class)
             ->set('upload.file', $this->workbookUpload())
-            ->set('upload.as_of_date', '2026-09-22')
             ->call('analyze')
             ->set('mapping.0.branch_id', null)
             ->call('validateMapping')
@@ -101,9 +137,49 @@ class ImportMembersTest extends TestCase
             ->assertSet('staging', true);
     }
 
-    public function test_auditor_cannot_open_the_import_page(): void
+    public function test_crs_officer_with_a_home_branch_imports_only_that_branchs_sheet(): void
     {
-        $this->actingAsRole(Permissions::AUDITOR);
+        Storage::fake('local');
+        $barbaza = Branch::where('name', 'Barbaza')->value('id');
+        $roxas = Branch::where('name', 'President Roxas')->value('id');
+        Member::factory()->create(['account_no' => '00101959720', 'branch_id' => Branch::where('name', 'Kalibo')->value('id')]);
+        $this->actingAs(User::factory()->create(['is_active' => true, 'branch_id' => $barbaza])->assignRole(Permissions::CRS));
+
+        $page = Livewire::test(ImportMembers::class)
+            ->set('upload.file', $this->workbookUpload())
+            ->call('analyze')
+            ->assertSet('mapping.0.include', true)
+            ->assertSet('mapping.1.include', false)
+            ->assertSee('limited to the Barbaza branch');
+
+        $page->set('mapping.1.include', true)
+            ->set('mapping.1.branch_id', $roxas)
+            ->call('validateMapping')
+            ->assertNotified('Mapping incomplete')
+            ->assertSet('staging', false);
+
+        $page->set('mapping.1.include', false)->call('validateMapping')->assertSet('staging', true);
+
+        while ($page->get('staging')) {
+            $page->call('stageNext');
+        }
+
+        $batch = ImportBatch::sole();
+        $page->call('startImport');
+
+        while ($batch->refresh()->status === 'importing') {
+            $page->call('importNext');
+        }
+
+        $this->assertSame('completed', $batch->status);
+        $this->assertDatabaseCount('members', 2);
+        $this->assertDatabaseHas('members', ['account_no' => '00101959720', 'branch_id' => $barbaza]);
+        $this->assertDatabaseMissing('members', ['account_no' => '00101959722']);
+    }
+
+    public function test_users_without_the_import_permission_cannot_open_the_import_page(): void
+    {
+        $this->actingAs(User::factory()->create(['is_active' => true]));
 
         $this->get(MemberResource::getUrl('import'))->assertForbidden();
     }

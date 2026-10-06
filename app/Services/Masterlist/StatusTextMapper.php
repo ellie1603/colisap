@@ -6,7 +6,7 @@ use Illuminate\Support\Str;
 
 /**
  * Interprets free-text masterlist status/remarks values.
- *  - terminal(): deceased / withdrawn (everything else is computed by the status engine)
+ *  - map(): deceased / withdrawn (incl. branch transfers) / terminated (everything else is computed by the status engine)
  *  - dormancyFlag(): the savings system's dormant-txn / dormant-bal flags
  */
 class StatusTextMapper
@@ -24,10 +24,23 @@ class StatusTextMapper
     /**
      * @var list<string>
      */
-    private const WITHDRAWN_KEYWORDS = ['closed', 'c-off', 'c off', 'coff', 'cut-off', 'cutoff', 'cut off', 'withdrawn', 'withdraw', 'resigned'];
+    private const WITHDRAWN_KEYWORDS = ['closed', 'closing', 'c-off', 'c off', 'coff', 'cut-off', 'cutoff', 'cut off', 'withdrawn', 'withdraw', 'w.draw', 'w/draw', 'wdraw', 'resigned'];
 
     /**
-     * @return 'deceased'|'withdrawn'|null
+     * A member who moved branches keeps going under the new branch's account; the old account is closed.
+     * Covers the masterlist spellings "Transferred to", "Transfererd to", "transfer to".
+     *
+     * @var list<string>
+     */
+    private const TRANSFER_KEYWORDS = ['transfer', 'transfered', 'transfererd'];
+
+    /**
+     * @var list<string>
+     */
+    private const TERMINATED_KEYWORDS = ['deactivated', 'deactivate', 'terminated', 'terminate'];
+
+    /**
+     * @return 'deceased'|'withdrawn'|'terminated'|null
      */
     public function map(mixed $text): ?string
     {
@@ -41,11 +54,20 @@ class StatusTextMapper
             return 'deceased';
         }
 
-        if (Str::contains($normalized, self::WITHDRAWN_KEYWORDS)) {
+        if (Str::contains($normalized, self::TERMINATED_KEYWORDS)) {
+            return 'terminated';
+        }
+
+        if (Str::contains($normalized, self::WITHDRAWN_KEYWORDS) || $this->isTransfer($text)) {
             return 'withdrawn';
         }
 
         return null;
+    }
+
+    public function isTransfer(mixed $text): bool
+    {
+        return Str::contains($this->normalize($text), self::TRANSFER_KEYWORDS);
     }
 
     /**

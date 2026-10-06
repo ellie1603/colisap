@@ -60,12 +60,12 @@ class UserResource extends Resource
                     ->disabled(fn (?User $record) => $record?->is(Auth::user()) ?? false)
                     ->helperText(fn (?User $record) => $record?->is(Auth::user())
                         ? 'You cannot change your own roles.'
-                        : 'Super Admin: everything incl. users, roles, branches, policy & audit. Admin: members, imports, claims, monitoring, reports. CRS: add/import/edit members and beneficiaries. Auditor: read-only.')
+                        : 'Administrator: full access, including users, roles, branches, policy settings and the audit log. CRS Officer: imports the NATCCO masterlist, adds and updates members, and uses monitoring and reports.')
                     ->required(),
                 Forms\Components\Select::make('branch_id')
                     ->label('Home branch')
                     ->options(fn () => Branch::options())
-                    ->helperText('Pre-selected when this user adds members.')
+                    ->helperText('A CRS Officer with a home branch sees only that branch\'s members, dashboard, monitoring and reports. Leave blank to show every branch. Administrators always see every branch.')
                     ->searchable(),
                 Forms\Components\Toggle::make('is_active')
                     ->label('Account active')

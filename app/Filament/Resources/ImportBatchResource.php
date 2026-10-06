@@ -5,11 +5,14 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\ImportBatchResource\Pages;
 use App\Filament\Resources\ImportBatchResource\RelationManagers;
 use App\Models\ImportBatch;
+use App\Services\Masterlist\MasterlistImportService;
 use Filament\Infolists;
 use Filament\Infolists\Infolist;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class ImportBatchResource extends Resource
 {
@@ -43,7 +46,7 @@ class ImportBatchResource extends Resource
                         ->color(fn (string $state) => ImportBatch::statusColor($state)),
                     Infolists\Components\TextEntry::make('uploader.name')->label('Uploaded by')->placeholder('—'),
                     Infolists\Components\TextEntry::make('created_at')->label('Uploaded')->dateTime(),
-                    Infolists\Components\TextEntry::make('as_of_date')->label('Masterlist as of')->date(),
+                    Infolists\Components\TextEntry::make('as_of_date')->label('Balances as of')->date(),
                     Infolists\Components\TextEntry::make('completed_at')->dateTime()->placeholder('—'),
                     Infolists\Components\TextEntry::make('total_rows'),
                     Infolists\Components\TextEntry::make('new_rows')->label('New'),
@@ -90,8 +93,57 @@ class ImportBatchResource extends Resource
                     ->icon('heroicon-o-play')
                     ->visible(fn (ImportBatch $record) => in_array($record->status, ['analyzed', 'staged', 'importing'], true) && (auth()->user()?->can('members.import') ?? false))
                     ->url(fn (ImportBatch $record) => MemberResource::getUrl('import', ['batch' => $record->id])),
+                Tables\Actions\Action::make('deleteImportedData')
+                    ->label('Delete')
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    ->visible(fn () => static::canDeleteImportedData())
+                    ->requiresConfirmation()
+                    ->modalHeading(fn (ImportBatch $record) => "Delete import #{$record->id} and its data?")
+                    ->modalDescription(fn (ImportBatch $record) => static::deleteImportedDataWarning($record))
+                    ->modalSubmitActionLabel('Delete imported data')
+                    ->action(fn (ImportBatch $record) => static::deleteImportedData($record)),
             ])
             ->defaultSort('id', 'desc');
+    }
+
+    /**
+     * Undoing an import permanently removes members, so only the Administrator may do it.
+     */
+    public static function canDeleteImportedData(): bool
+    {
+        return auth()->user()?->isAdministrator() ?? false;
+    }
+
+    public static function deleteImportedDataWarning(ImportBatch $batch): string
+    {
+        $summary = app(MasterlistImportService::class)->importedDataSummary($batch);
+
+        return 'This permanently deletes '.number_format($summary['members']).' member(s) that "'.$batch->file_name.'" added, together with their savings entries, applications and history'
+            .($summary['adjustments'] > 0 ? ', and takes back the balance changes it made to '.number_format($summary['adjustments']).' member(s) that already existed' : '')
+            .'. The file is also removed from Import History. This cannot be undone.';
+    }
+
+    public static function deleteImportedData(ImportBatch $batch): void
+    {
+        abort_unless(static::canDeleteImportedData(), 403);
+
+        $fileName = $batch->file_name;
+        $summary = app(MasterlistImportService::class)->deleteImportedData($batch);
+
+        Notification::make()
+            ->title('Imported data deleted')
+            ->body('"'.$fileName.'": '.number_format($summary['members']).' member(s) removed'.($summary['adjustments'] > 0 ? ', '.number_format($summary['adjustments']).' balance adjustment(s) taken back' : '').'.')
+            ->success()
+            ->send();
+    }
+
+    /**
+     * @return Builder<ImportBatch>
+     */
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->visibleToCurrentUser();
     }
 
     public static function getRelations(): array

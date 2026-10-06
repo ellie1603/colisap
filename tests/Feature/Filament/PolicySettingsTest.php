@@ -21,19 +21,18 @@ class PolicySettingsTest extends TestCase
         $policy = app(PolicySettingsService::class);
 
         $this->assertSame(
-            [40000.0, 60000.0, 500.0, 2000.0, 180, 90, 15, 3, 30.0, 5.0, 100, 1, 3, 100.0, 50.0],
+            [40000.0, 60000.0, 500.0, 2000.0, 180, 90, 15, 3, 30.0, 100],
             [
                 $policy->decimal('benefit_40k'), $policy->decimal('benefit_60k'), $policy->decimal('min_balance_40k'), $policy->decimal('min_balance_60k'),
                 $policy->int('effectivity_days'), $policy->int('upgrade_wait_days'), $policy->int('replenishment_days'), $policy->int('dormancy_months'),
-                $policy->decimal('reapplication_fee'), $policy->decimal('claim_contribution'), $policy->int('min_program_participants'),
-                $policy->int('min_beneficiaries'), $policy->int('max_beneficiaries'), $policy->decimal('coop_share_diamond'), $policy->decimal('coop_share_gold'),
+                $policy->decimal('reapplication_fee'), $policy->int('min_program_participants'),
             ],
         );
     }
 
-    public function test_super_admin_changes_are_saved_and_audited(): void
+    public function test_administrator_changes_are_saved_and_audited(): void
     {
-        $user = $this->actingAsRole(Permissions::SUPER_ADMIN);
+        $user = $this->actingAsRole(Permissions::ADMIN);
 
         Livewire::test(PolicySettings::class)
             ->set('data.min_balance_40k', 750)
@@ -54,9 +53,9 @@ class PolicySettingsTest extends TestCase
         $this->assertFalse($member->fresh()->meetsMinimumBalance());
     }
 
-    public function test_admin_cannot_change_policy(): void
+    public function test_crs_officer_cannot_change_policy(): void
     {
-        $this->actingAsRole(Permissions::ADMIN);
+        $this->actingAsRole(Permissions::CRS);
 
         $this->get(PolicySettings::getUrl())->assertForbidden();
     }

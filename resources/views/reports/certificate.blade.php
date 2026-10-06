@@ -47,18 +47,6 @@
         <tr><td class="label">Maintaining balance</td><td>PHP {{ number_format($member->minimumBalance(), 2) }}</td></tr>
     </table>
 
-    <h2>Designated beneficiaries</h2>
-    <table class="benef">
-        <thead><tr><th>Name</th><th>Relationship</th><th>Share</th></tr></thead>
-        <tbody>
-        @forelse ($member->activeBeneficiaries as $beneficiary)
-            <tr><td>{{ $beneficiary->full_name }}</td><td>{{ $beneficiary->relationship }}</td><td>{{ rtrim(rtrim(number_format((float) $beneficiary->share_percentage, 2), '0'), '.') }}%</td></tr>
-        @empty
-            <tr><td colspan="3">No beneficiary designated.</td></tr>
-        @endforelse
-        </tbody>
-    </table>
-
     <table class="sign">
         <tr>
             <td><div class="line">Participant</div></td>

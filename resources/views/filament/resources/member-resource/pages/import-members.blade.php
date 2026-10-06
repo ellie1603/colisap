@@ -66,6 +66,9 @@
                 <x-slot name="description">
                     {{ $batch->file_name }} · as of {{ $batch->as_of_date->toFormattedDateString() }}.
                     Sheets were matched to branches by name and columns by their headers — adjust anything that is wrong. Only ticked sheets are imported.
+                    @if ($ownBranchName)
+                        Your account is limited to the {{ $ownBranchName }} branch, so only its sheet can be imported.
+                    @endif
                 </x-slot>
 
                 <div class="colisap-stack">
@@ -78,7 +81,7 @@
                                         <span class="colisap-sheet__title">{{ $sheet['name'] }}</span><br>
                                         <span class="colisap-muted">
                                             @if ($sheet['header_row'])
-                                                Header on row {{ $sheet['header_row'] }} · {{ number_format($sheet['data_rows']) }} rows below it
+                                                Header on row {{ $sheet['header_row'] }}@if ($sheet['staged'] ?? false) · {{ number_format($sheet['staged_rows'] ?? 0) }} member rows read @endif
                                             @else
                                                 No header row with Acct. Number / Account Name found — sheet skipped
                                             @endif
@@ -159,6 +162,7 @@
                 <x-slot name="heading">Ready to import</x-slot>
                 <x-slot name="description">
                     {{ number_format($batch->importableCount()) }} member(s) will be written. Duplicates and invalid rows are skipped — download the issues report to correct them in Excel.
+                    To leave a row out, tick its checkbox in the table below and choose "Delete selected".
                 </x-slot>
                 <div class="colisap-actions">
                     <x-filament::button wire:click="startImport" icon="heroicon-o-arrow-down-on-square-stack" wire:confirm="Import {{ number_format($batch->importableCount()) }} member(s) now?">

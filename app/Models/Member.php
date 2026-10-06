@@ -127,6 +127,13 @@ class Member extends Model
 
     protected static function booted(): void
     {
+        // Staff with a home branch only ever see that branch: lists, dashboard, monitoring, reports and exports.
+        static::addGlobalScope('homeBranch', function (Builder $query) {
+            if ($branchId = Branch::restrictedId()) {
+                $query->where($query->qualifyColumn('branch_id'), $branchId);
+            }
+        });
+
         static::creating(function (Member $member) {
             $member->created_by ??= Auth::id();
             $member->status ??= 'waiting';
@@ -408,29 +415,12 @@ class Member extends Model
         return $this->policy()->benefitFor($this->category);
     }
 
-    public function beneficiaryCount(): int
-    {
-        if (array_key_exists('active_beneficiaries_count', $this->attributes)) {
-            return (int) $this->attributes['active_beneficiaries_count'];
-        }
-
-        return $this->activeBeneficiaries()->count();
-    }
-
-    public function hasCompleteBeneficiaries(): bool
-    {
-        $count = $this->beneficiaryCount();
-
-        return $count >= $this->policy()->int('min_beneficiaries') && $count <= $this->policy()->int('max_beneficiaries');
-    }
-
     /**
-     * Covered for the mortuary benefit right now: effective (active), meets maintaining balance
-     * and has the required beneficiaries.
+     * Covered for the mortuary benefit right now: effective (active) and meets the maintaining balance.
      */
     public function isEligible(): bool
     {
-        return $this->status === 'active' && $this->meetsMinimumBalance() && $this->hasCompleteBeneficiaries();
+        return $this->status === 'active' && $this->meetsMinimumBalance();
     }
 
     /**
@@ -452,10 +442,6 @@ class Member extends Model
 
         if (! $this->meetsMinimumBalance()) {
             $issues[] = 'Savings below ₱'.number_format($this->minimumBalance(), 2).' maintaining balance (short ₱'.number_format($this->balanceShortfall(), 2).')';
-        }
-
-        if (! $this->hasCompleteBeneficiaries()) {
-            $issues[] = $this->beneficiaryCount() === 0 ? 'Beneficiary information incomplete' : 'Beneficiary count outside the allowed range';
         }
 
         return $issues;

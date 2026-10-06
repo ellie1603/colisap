@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Filament;
 
+use App\Filament\Pages\Monitoring;
+use App\Filament\Resources\MemberResource;
 use App\Filament\Widgets\AlertsWidget;
 use App\Filament\Widgets\MemberStatusChart;
 use App\Filament\Widgets\MemberStatusStats;
@@ -49,6 +51,29 @@ class DashboardTest extends TestCase
         );
     }
 
+    public function test_the_status_summary_is_limited_to_four_cards_linking_to_the_member_list(): void
+    {
+        Member::factory()->dormant()->create();
+        $this->actingAsRole(Permissions::CRS);
+
+        $html = Livewire::test(MemberStatusStats::class)->html();
+
+        $this->assertSame(4, substr_count($html, 'class="colisap-kpi colisap-kpi--'));
+        $this->assertStringContainsString('activeTab=dormant', $html);
+    }
+
+    public function test_the_top_of_the_dashboard_is_rendered_in_the_first_response_not_lazy_loaded(): void
+    {
+        Member::factory()->create();
+        $this->actingAsRole(Permissions::CRS);
+
+        $this->get('/admin')
+            ->assertOk()
+            ->assertSee('class="colisap-kpi colisap-kpi--total"', escape: false)
+            ->assertSee('Action center')
+            ->assertSee('New approvals');
+    }
+
     public function test_status_by_branch_covers_all_fifteen_branches(): void
     {
         Member::factory()->create(['branch_id' => Branch::where('name', 'Altavas')->value('id')]);
@@ -60,7 +85,7 @@ class DashboardTest extends TestCase
         $this->assertSame(1, $data['datasets'][1]['data'][array_search('Altavas', $data['labels'], true)]);
     }
 
-    public function test_monitoring_figures_for_effectivity_beneficiaries_and_replenishment(): void
+    public function test_monitoring_figures_for_effectivity_and_replenishment(): void
     {
         $this->travelTo('2026-06-30 08:00:00');
         Member::factory()->waiting()->create(['approval_date' => now()->subDays(160)]);
@@ -70,7 +95,6 @@ class DashboardTest extends TestCase
 
         $this->assertSame(1, $monitoring->becomingEffectiveWithin(30)->count());
         $this->assertSame(['Within 30 days' => 1, '31–60 days' => 0, '61–90 days' => 1, 'Over 90 days' => 0], $monitoring->effectivityBuckets());
-        $this->assertSame(3, $monitoring->withoutBeneficiaries()->count());
         $this->assertSame(1, $monitoring->belowMinimumBalance()->count());
     }
 
@@ -81,8 +105,39 @@ class DashboardTest extends TestCase
 
         Livewire::test(AlertsWidget::class)
             ->assertSee('Savings below minimum')
-            ->assertSee('Beneficiary information incomplete')
+            ->assertDontSee('Beneficiary')
             ->assertSee('warning');
+    }
+
+    public function test_the_panel_chrome_has_a_sidebar_logout_and_a_topbar_theme_toggle(): void
+    {
+        $this->actingAsRole(Permissions::CRS);
+
+        $this->get('/admin')
+            ->assertOk()
+            ->assertSeeInOrder(['colisap-sidebar-logout', 'action="'.filament()->getLogoutUrl().'"', 'Logout'], escape: false)
+            ->assertSee('class="colisap-theme-toggle"', escape: false)
+            ->assertDontSee('toggleCollapsedGroup', escape: false);
+    }
+
+    public function test_the_topbar_back_button_is_rendered_hidden_so_only_detail_pages_reveal_it(): void
+    {
+        $this->actingAsRole(Permissions::CRS);
+
+        foreach (['/admin', Monitoring::getUrl(), MemberResource::getUrl('index')] as $url) {
+            $this->get($url)
+                ->assertOk()
+                ->assertSee('class="colisap-back" data-colisap-back hidden', escape: false);
+        }
+    }
+
+    public function test_signing_out_from_the_sidebar_ends_the_session(): void
+    {
+        $this->actingAsRole(Permissions::CRS);
+
+        $this->post(filament()->getLogoutUrl())->assertRedirect();
+
+        $this->assertGuest();
     }
 
     public function test_dashboard_shows_the_logo(): void

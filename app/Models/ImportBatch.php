@@ -3,9 +3,11 @@
 namespace App\Models;
 
 use App\Models\Concerns\Auditable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * One masterlist upload: its sheet/branch/column mapping, staged rows and results.
@@ -63,6 +65,30 @@ class ImportBatch extends Model
             'cancelled' => 'gray',
             default => 'info',
         };
+    }
+
+    /**
+     * Staff limited to one branch see the imports that only touched that branch, plus their own unfinished uploads.
+     *
+     * @param  Builder<ImportBatch>  $query
+     */
+    public function scopeVisibleToCurrentUser(Builder $query): void
+    {
+        $branchId = Branch::restrictedId();
+
+        if ($branchId === null) {
+            return;
+        }
+
+        $query->where(fn (Builder $query) => $query
+            ->where(fn (Builder $query) => $query
+                ->whereHas('rows')
+                ->whereDoesntHave('rows', fn (Builder $rows) => $rows->where(fn (Builder $rows) => $rows
+                    ->where('branch_id', '<>', $branchId)
+                    ->orWhereNull('branch_id'))))
+            ->orWhere(fn (Builder $query) => $query
+                ->whereDoesntHave('rows')
+                ->where('uploaded_by', Auth::id())));
     }
 
     /**

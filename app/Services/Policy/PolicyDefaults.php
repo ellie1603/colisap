@@ -4,7 +4,7 @@ namespace App\Services\Policy;
 
 /**
  * Default COLISAP policy values (General Provisions). Every value is editable by the
- * Super Admin under Policy Settings; nothing else in the application hard-codes them.
+ * Administrator under Policy Settings; nothing else in the application hard-codes them.
  */
 final class PolicyDefaults
 {
@@ -41,21 +41,9 @@ final class PolicyDefaults
         'auto_enforce_terminations' => ['group' => 'Dormancy', 'label' => 'Automatically terminate / downgrade when policy conditions are met', 'type' => 'bool', 'value' => true],
         'dormancy_warning_days' => ['group' => 'Dormancy', 'label' => 'Warn when dormancy termination is within (days)', 'type' => 'int', 'value' => 30],
 
-        // Contributions (III.2, VI)
-        'claim_contribution' => ['group' => 'Contributions', 'label' => 'Participant contribution per mortuary claim (₱)', 'type' => 'decimal', 'value' => 5],
-        'additional_60k_contribution' => ['group' => 'Contributions', 'label' => 'Extra contribution from 60K participants for a 60K claim (₱)', 'type' => 'decimal', 'value' => 0, 'help' => 'The policy does not state how the additional ₱20,000 of a 60K claim is funded. Leave 0 until confirmed.'],
-        'equal_share_threshold' => ['group' => 'Contributions', 'label' => 'Equal-share rule applies when 40K participants fall below', 'type' => 'int', 'value' => 3000],
-        'equal_share_enabled' => ['group' => 'Contributions', 'label' => 'Enable equal-share contributions below the threshold', 'type' => 'bool', 'value' => false, 'help' => 'Policy VI.2. When on and participants are below the threshold, each pays benefit ÷ participants instead of the fixed contribution.'],
-        'coop_share_diamond' => ['group' => 'Contributions', 'label' => 'Coop share of contribution — Diamond (%)', 'type' => 'decimal', 'value' => 100],
-        'coop_share_gold' => ['group' => 'Contributions', 'label' => 'Coop share of contribution — Gold (%)', 'type' => 'decimal', 'value' => 50],
-        'coop_share_silver' => ['group' => 'Contributions', 'label' => 'Coop share of contribution — Silver (%)', 'type' => 'decimal', 'value' => 0],
-        'coop_share_regular' => ['group' => 'Contributions', 'label' => 'Coop share of contribution — Regular (%)', 'type' => 'decimal', 'value' => 0],
-
         // Program (X, XI)
         'reapplication_fee' => ['group' => 'Program', 'label' => 'Re-application fee (₱)', 'type' => 'decimal', 'value' => 30],
         'min_program_participants' => ['group' => 'Program', 'label' => 'Minimum program participants', 'type' => 'int', 'value' => 100],
-        'min_beneficiaries' => ['group' => 'Program', 'label' => 'Minimum beneficiaries per member', 'type' => 'int', 'value' => 1],
-        'max_beneficiaries' => ['group' => 'Program', 'label' => 'Maximum beneficiaries per member', 'type' => 'int', 'value' => 3],
         'alert_window_days' => ['group' => 'Program', 'label' => 'Dashboard "coming up" window (days)', 'type' => 'int', 'value' => 30],
     ];
 }

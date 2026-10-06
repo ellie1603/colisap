@@ -16,7 +16,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * Read-only, append-only audit trail. No user (including Super Admin) can edit or delete entries here.
+ * Read-only, append-only audit trail. No user (including the Administrator) can edit or delete entries here.
  */
 class AuditLogResource extends Resource
 {

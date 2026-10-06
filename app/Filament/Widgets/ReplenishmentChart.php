@@ -6,6 +6,8 @@ class ReplenishmentChart extends ColisapChart
 {
     protected static ?string $heading = 'Replenishment monitoring';
 
+    protected static ?string $description = 'Notices and members below minimum balance.';
+
     protected int|string|array $columnSpan = 1;
 
     protected function getType(): string
@@ -15,6 +17,6 @@ class ReplenishmentChart extends ColisapChart
 
     protected function getData(): array
     {
-        return $this->single('Members', $this->monitoring()->replenishmentSummary(), ['#F59E0B', '#F2711C', '#E11D48', '#94A3B8']);
+        return $this->single('Members', $this->monitoring()->replenishmentSummary(), [self::YELLOW, self::ORANGE, self::ROSE, self::MIST]);
     }
 }

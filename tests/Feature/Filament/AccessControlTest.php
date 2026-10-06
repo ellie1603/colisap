@@ -7,15 +7,12 @@ use App\Filament\Pages\PolicySettings;
 use App\Filament\Pages\Reports;
 use App\Filament\Resources\AuditLogResource;
 use App\Filament\Resources\BranchResource;
-use App\Filament\Resources\ClaimResource;
-use App\Filament\Resources\ClaimResource\Pages\EditClaim;
 use App\Filament\Resources\ImportBatchResource;
 use App\Filament\Resources\MemberResource;
 use App\Filament\Resources\MemberResource\Pages\EditMember;
 use App\Filament\Resources\RoleResource;
 use App\Filament\Resources\UserResource;
 use App\Filament\Resources\UserResource\Pages\EditUser;
-use App\Models\Claim;
 use App\Models\Member;
 use App\Services\Access\Permissions;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
@@ -37,7 +34,6 @@ class AccessControlTest extends TestCase
             'members' => MemberResource::class.'@index',
             'import' => MemberResource::class.'@import',
             'import history' => ImportBatchResource::class.'@index',
-            'claims' => ClaimResource::class.'@index',
             'monitoring' => Monitoring::class,
             'reports' => Reports::class,
             'users' => UserResource::class.'@index',
@@ -48,9 +44,8 @@ class AccessControlTest extends TestCase
         ];
 
         $expected = [
-            Permissions::SUPER_ADMIN => ['members' => 200, 'import' => 200, 'import history' => 200, 'claims' => 200, 'monitoring' => 200, 'reports' => 200, 'users' => 200, 'roles' => 200, 'branches' => 200, 'policy' => 200, 'audit' => 200],
-            Permissions::ADMIN => ['members' => 200, 'import' => 200, 'import history' => 200, 'claims' => 200, 'monitoring' => 200, 'reports' => 200, 'users' => 403, 'roles' => 403, 'branches' => 403, 'policy' => 403, 'audit' => 403],
-            Permissions::CRS => ['members' => 200, 'import' => 200, 'import history' => 200, 'claims' => 200, 'monitoring' => 200, 'reports' => 403, 'users' => 403, 'roles' => 403, 'branches' => 403, 'policy' => 403, 'audit' => 403],
+            Permissions::ADMIN => ['members' => 200, 'import' => 200, 'import history' => 200, 'monitoring' => 200, 'reports' => 200, 'users' => 200, 'roles' => 200, 'branches' => 200, 'policy' => 200, 'audit' => 200],
+            Permissions::CRS => ['members' => 200, 'import' => 200, 'import history' => 200, 'monitoring' => 200, 'reports' => 200, 'users' => 403, 'roles' => 403, 'branches' => 403, 'policy' => 403, 'audit' => 403],
         ];
 
         $cases = [];
@@ -100,15 +95,12 @@ class AccessControlTest extends TestCase
         $this->assertSoftDeleted($member);
     }
 
-    public function test_auditor_can_view_member_and_claim_details_but_not_edit(): void
+    public function test_the_retired_mortuary_pages_no_longer_exist(): void
     {
-        $claim = Claim::factory()->create();
-        $this->actingAsRole(Permissions::AUDITOR);
+        $this->actingAsRole(Permissions::ADMIN);
 
-        $this->get(MemberResource::getUrl('view', ['record' => $claim->member]))->assertOk();
-        $this->get(ClaimResource::getUrl('view', ['record' => $claim]))->assertOk();
-        $this->get(MemberResource::getUrl('edit', ['record' => $claim->member]))->assertForbidden();
-        $this->get(ClaimResource::getUrl('edit', ['record' => $claim]))->assertForbidden();
+        $this->get('/admin/claims')->assertNotFound();
+        $this->get('/admin/contributions')->assertNotFound();
     }
 
     public function test_deactivated_user_is_blocked_and_logged_out(): void
@@ -120,29 +112,9 @@ class AccessControlTest extends TestCase
         $this->assertGuest();
     }
 
-    public function test_approved_claims_are_locked_from_editing(): void
+    public function test_administrator_cannot_deactivate_or_demote_own_account(): void
     {
-        $claim = Claim::factory()->create(['status' => 'approved']);
-        $this->actingAsRole(Permissions::ADMIN);
-
-        $this->get(ClaimResource::getUrl('edit', ['record' => $claim]))->assertForbidden();
-    }
-
-    public function test_claim_status_cannot_be_set_through_the_edit_form(): void
-    {
-        $claim = Claim::factory()->create(['status' => 'under_review']);
-        $this->actingAsRole(Permissions::ADMIN);
-
-        Livewire::test(EditClaim::class, ['record' => $claim->getRouteKey()])
-            ->set('data.status', 'settled')
-            ->call('save');
-
-        $this->assertSame('under_review', $claim->fresh()->status);
-    }
-
-    public function test_super_admin_cannot_deactivate_or_demote_own_account(): void
-    {
-        $user = $this->actingAsRole(Permissions::SUPER_ADMIN);
+        $user = $this->actingAsRole(Permissions::ADMIN);
 
         Livewire::test(EditUser::class, ['record' => $user->getRouteKey()])
             ->assertFormFieldIsDisabled('is_active')
@@ -152,6 +124,6 @@ class AccessControlTest extends TestCase
             ->assertHasNoFormErrors();
 
         $this->assertTrue($user->fresh()->is_active);
-        $this->assertTrue($user->fresh()->hasRole(Permissions::SUPER_ADMIN));
+        $this->assertTrue($user->fresh()->hasRole(Permissions::ADMIN));
     }
 }

@@ -6,6 +6,7 @@ use App\Models\User;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class DatabaseSeederTest extends TestCase
@@ -18,10 +19,11 @@ class DatabaseSeederTest extends TestCase
 
         $this->artisan('db:seed', ['--class' => DatabaseSeeder::class, '--force' => true])->assertSuccessful();
 
-        $superAdmin = User::where('email', 'superadmin@bmpc.coop')->sole();
-        $this->assertFalse(Hash::check('password', $superAdmin->password));
-        $this->assertTrue($superAdmin->hasRole('super_admin'));
+        $admin = User::where('email', 'admin@bmpc.coop')->sole();
+        $this->assertFalse(Hash::check('password', $admin->password));
+        $this->assertTrue($admin->hasRole('admin'));
         $this->assertTrue(User::where('email', 'crs@bmpc.coop')->sole()->hasRole('crs'));
+        $this->assertSame(['admin', 'crs'], Role::orderBy('name')->pluck('name')->all());
     }
 
     public function test_reseeding_does_not_reset_existing_account_passwords(): void

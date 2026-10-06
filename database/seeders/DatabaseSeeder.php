@@ -30,18 +30,15 @@ class DatabaseSeeder extends Seeder
             Permission::findOrCreate($permission, 'web');
         }
 
-        Role::findOrCreate(Permissions::SUPER_ADMIN, 'web');
-
         foreach (Permissions::defaults() as $role => $permissions) {
             $model = Role::findOrCreate($role, 'web');
 
-            // Only fill roles that have never been configured; never overwrite a Super Admin's changes.
+            // Only fill roles that have never been configured; never overwrite an Administrator's changes.
             if ($model->permissions()->doesntExist()) {
                 $model->syncPermissions($permissions);
             }
         }
 
-        $this->seedAccount('superadmin@bmpc.coop', 'COLISAP Super Admin', Permissions::SUPER_ADMIN);
         $this->seedAccount('admin@bmpc.coop', 'BMPC Administrator', Permissions::ADMIN);
         $this->seedAccount('crs@bmpc.coop', 'COLISAP CRS', Permissions::CRS);
     }

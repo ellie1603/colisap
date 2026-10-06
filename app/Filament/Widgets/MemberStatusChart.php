@@ -8,6 +8,8 @@ class MemberStatusChart extends ColisapChart
 {
     protected static ?string $heading = 'Member status';
 
+    protected static ?string $description = 'Share of members in each status.';
+
     protected int|string|array $columnSpan = 1;
 
     protected function getType(): string

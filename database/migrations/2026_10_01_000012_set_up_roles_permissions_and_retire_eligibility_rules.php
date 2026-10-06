@@ -22,7 +22,7 @@ return new class extends Migration
         // "staff" becomes CRS (keeps its users).
         DB::table('roles')->where('name', 'staff')->where('guard_name', 'web')->update(['name' => Permissions::CRS]);
 
-        $superAdmin = Role::findOrCreate(Permissions::SUPER_ADMIN, 'web');
+        $superAdmin = Role::findOrCreate('super_admin', 'web');
 
         foreach (Permissions::defaults() as $role => $permissions) {
             Role::findOrCreate($role, 'web')->syncPermissions($permissions);
@@ -61,6 +61,6 @@ return new class extends Migration
         });
 
         DB::table('roles')->where('name', Permissions::CRS)->update(['name' => 'staff']);
-        Role::where('name', Permissions::SUPER_ADMIN)->delete();
+        Role::where('name', 'super_admin')->delete();
     }
 };

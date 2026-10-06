@@ -18,7 +18,7 @@ class EditMember extends EditRecord
             Actions\ViewAction::make(),
             Actions\DeleteAction::make()
                 ->label('Archive')
-                ->modalDescription('The member, with their beneficiaries, claims and contributions, will be hidden from lists, dashboards and reports but kept for history. You can restore them from the "Archived members" filter.'),
+                ->modalDescription('The member will be hidden from lists, dashboards and reports but kept for history. You can restore them from the "Archived members" filter.'),
             Actions\RestoreAction::make(),
         ];
     }
@@ -56,7 +56,7 @@ class EditMember extends EditRecord
     }
 
     /**
-     * Savings or beneficiaries changed in a relation manager can change status; show it right away.
+     * Savings changed in a relation manager can change status; show it right away.
      */
     #[On('member-ledger-updated')]
     public function refreshStatusField(): void
