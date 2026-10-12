@@ -63,7 +63,7 @@ class ViewMember extends ViewRecord
                             ->success()->send();
                     }),
                 Actions\Action::make('requestUpgrade')
-                    ->label('Request 60K upgrade')
+                    ->label('Request '.Member::higherCategoryLabel().' upgrade')
                     ->icon('heroicon-o-arrow-trending-up')
                     ->visible(fn () => ($can('members.update_colisap') || $can('monitoring.manage'))
                         && $this->record->category === '40000'
@@ -72,7 +72,7 @@ class ViewMember extends ViewRecord
                     ->form([
                         Forms\Components\DatePicker::make('requested_at')->label('Request date')->default(now())->maxDate(now())->required(),
                     ])
-                    ->modalDescription(fn () => 'The member becomes eligible for 60K after '.$policy->int('upgrade_wait_days').' days (Policy III.3) and must keep ₱'.number_format($policy->decimal('min_balance_60k'), 2).' in savings.')
+                    ->modalDescription(fn () => 'The member becomes eligible for '.Member::higherCategoryLabel().' after '.$policy->int('upgrade_wait_days').' days (Policy III.3) and must keep ₱'.number_format($policy->decimal('min_balance_60k'), 2).' in savings.')
                     ->action(function (array $data) {
                         $this->record->requestCategoryUpgrade(Carbon::parse($data['requested_at']));
 
@@ -81,7 +81,7 @@ class ViewMember extends ViewRecord
                             ->success()->send();
                     }),
                 Actions\Action::make('applyUpgrade')
-                    ->label('Apply 60K upgrade')
+                    ->label('Apply '.Member::higherCategoryLabel().' upgrade')
                     ->icon('heroicon-o-check-badge')
                     ->color('success')
                     ->visible(fn () => $can('monitoring.manage') && $this->record->upgradeStatus() === 'eligible')
@@ -89,14 +89,14 @@ class ViewMember extends ViewRecord
                     ->action(function () {
                         if (! $this->record->applyCategoryUpgradeIfEligible()) {
                             Notification::make()->title('Upgrade not applied')
-                                ->body('Savings must be at least ₱'.number_format(app(PolicySettings::class)->decimal('min_balance_60k'), 2).' to move to 60K.')
+                                ->body('Savings must be at least ₱'.number_format(app(PolicySettings::class)->decimal('min_balance_60k'), 2).' to move to '.Member::higherCategoryLabel().'.')
                                 ->danger()->send();
 
                             return;
                         }
 
                         $this->record->refreshStatus();
-                        Notification::make()->title('Member moved to 60K')->success()->send();
+                        Notification::make()->title('Member moved to '.Member::higherCategoryLabel())->success()->send();
                     }),
                 Actions\Action::make('issueNotice')
                     ->label('Issue replenishment notice')
@@ -148,12 +148,11 @@ class ViewMember extends ViewRecord
                     ->label('Start re-application')
                     ->icon('heroicon-o-arrow-path-rounded-square')
                     ->visible(fn () => $can('applications.manage')
-                        && in_array($this->record->status, ['terminated', 'withdrawn'], true)
-                        && ! $this->record->applications()->where('status', 'pending')->exists())
+                        && Application::blockingReason($this->record, 'reapplication') === null)
                     ->modalDescription(fn () => 'Policy X: the member goes through the same qualification process as a new member. Re-application fee: ₱'.number_format($policy->decimal('reapplication_fee'), 2).'. Previous history is kept.')
                     ->form([
                         Forms\Components\DatePicker::make('application_date')->default(now())->maxDate(now())->required(),
-                        Forms\Components\Select::make('category')->options(Member::CATEGORIES)->default('40000')->required(),
+                        Forms\Components\Select::make('category')->options(Member::categoryOptions())->default('40000')->required(),
                         Forms\Components\Toggle::make('fee_paid')->label('Re-application fee paid'),
                     ])
                     ->action(function (array $data) use ($policy) {

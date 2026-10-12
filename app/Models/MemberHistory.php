@@ -41,7 +41,7 @@ class MemberHistory extends Model
     {
         return match ($this->field) {
             'status' => Member::STATUSES[$value] ?? ($value ?? '—'),
-            'category' => Member::CATEGORIES[$value] ?? ($value ?? '—'),
+            'category' => Member::categoryOptions()[$value] ?? ($value ?? '—'),
             'segment' => $value === null ? 'Unassigned' : Member::segmentLabel($value),
             default => $value ?? '—',
         };

@@ -3,6 +3,7 @@
 namespace App\Services\Masterlist;
 
 use App\Models\Branch;
+use App\Services\Sms\SmsGateway;
 use DateTimeInterface;
 use Generator;
 use Illuminate\Support\Carbon;
@@ -60,7 +61,7 @@ class WorkbookParser
      * @var array<string, list<string>>
      */
     public const HEADER_ALIASES = [
-        'account_no' => ['acctnumber', 'acctno', 'acctcode', 'accountcode', 'cifkey', 'cif', 'accountnumber', 'accountno', 'accno', 'acctnum', 'accountnum', 'memberno', 'membersno', 'memberid', 'idno', 'cid', 'cidno', 'savingsacctno', 'saacctno', 'sano'],
+        'account_no' => ['acctnumber', 'acctno', 'acctcode', 'accountcode', 'cifkey', 'cif', 'cifno', 'cifnumber', 'accountnumber', 'accountno', 'accno', 'acctnum', 'accountnum', 'memberno', 'membersno', 'memberid', 'idno', 'cid', 'cidno', 'savingsacctno', 'saacctno', 'sano'],
         'full_name' => ['accountname', 'name', 'fullname', 'membername', 'membersname', 'nameofmember', 'nameofmembers', 'completename'],
         'last_name' => ['lastname', 'surname', 'familyname', 'lname'],
         'first_name' => ['firstname', 'givenname', 'fname'],
@@ -77,7 +78,7 @@ class WorkbookParser
         'remarks' => ['remarks', 'remark', 'notes', 'note'],
         'birthdate' => ['birthdate', 'birthday', 'dateofbirth', 'dob', 'bday', 'bdate'],
         'sex' => ['sex', 'gender'],
-        'contact_number' => ['contactno', 'contactnumber', 'mobileno', 'mobilenumber', 'cellphoneno', 'cpno', 'phone', 'phoneno', 'telno'],
+        'contact_number' => ['contactno', 'contactnumber', 'contact', 'mobileno', 'mobilenumber', 'mobile', 'mobilephone', 'cellphoneno', 'cellphonenumber', 'cellphone', 'cellno', 'cellnumber', 'celno', 'cpno', 'cpnumber', 'cpnum', 'cp', 'phone', 'phoneno', 'phonenumber', 'telno', 'telephone'],
         'address' => ['address', 'homeaddress', 'residence'],
         'date_deceased' => ['datedeceased', 'dateofdeath', 'datedied', 'dod', 'deathdate'],
     ];
@@ -93,6 +94,13 @@ class WorkbookParser
      * @var list<string>
      */
     private const IGNORED_HEADERS = ['upgrading', 'x', 'no', 'count', 'total'];
+
+    /**
+     * A sheet mapped to nothing but these fields is a mobile-number list, not a masterlist.
+     *
+     * @var list<string>
+     */
+    private const CONTACT_LIST_FIELDS = ['account_no', 'full_name', 'last_name', 'first_name', 'middle_name', 'suffix', 'contact_number'];
 
     private const HEADER_SCAN_ROWS = 25;
 
@@ -145,7 +153,7 @@ class WorkbookParser
                     'branch_id' => $branch?->id,
                     'branch_name' => $branch?->name,
                     'data_rows' => null,
-                    'include' => $headerIndex !== null && isset($columns['account_no']) && $branch !== null && $sheet->isVisible(),
+                    'include' => $headerIndex !== null && isset($columns['account_no']) && ($branch !== null || self::isContactList($columns)) && $sheet->isVisible(),
                 ];
             }
         } finally {
@@ -153,6 +161,21 @@ class WorkbookParser
         }
 
         return $sheets;
+    }
+
+    /**
+     * A mobile-number list: CIF Key (Acct. Number), optionally the name, and a contact number — nothing else.
+     * Importing one only updates the contact number of members that already exist.
+     *
+     * @param  array<string, int|string|null>  $columns
+     */
+    public static function isContactList(array $columns): bool
+    {
+        $mapped = array_keys(array_filter($columns, fn ($column) => $column !== null && $column !== ''));
+
+        return in_array('account_no', $mapped, true)
+            && in_array('contact_number', $mapped, true)
+            && array_diff($mapped, self::CONTACT_LIST_FIELDS) === [];
     }
 
     /**
@@ -257,6 +280,11 @@ class WorkbookParser
             return 'full_name';
         }
 
+        // A column headed just "Number" is the mobile number; longer headers ("OR Number") are left for the aliases below.
+        if (in_array($normalized, ['number', 'numbers'], true)) {
+            return 'contact_number';
+        }
+
         // The masterlist labels dates by stage: "NEW Date of …" (approval) and "UPGRADING Date of …" (upgrade request).
         if (str_contains($normalized, 'date') && str_starts_with($normalized, 'upgrad')) {
             return 'upgrade_requested_at';
@@ -294,9 +322,10 @@ class WorkbookParser
      *
      * @param  array<int, mixed>  $cells
      * @param  array<string, int>  $columns
+     * @param  array<string, float>  $benefitAmounts  category key => its current benefit amount (see parseCategory)
      * @return array{blank: bool, data: array<string, mixed>, raw: array<string, string>, errors: list<string>, warnings: list<string>, numeric_account: bool}
      */
-    public function normalizeRow(array $cells, array $columns, bool $allowNegativeBalance = false): array
+    public function normalizeRow(array $cells, array $columns, bool $allowNegativeBalance = false, array $benefitAmounts = []): array
     {
         $raw = [];
 
@@ -347,11 +376,12 @@ class WorkbookParser
         $data['segment'] = $this->parseSegment($raw['segment'] ?? null);
 
         if ($data['segment'] === null) {
-            $warnings[] = isset($raw['segment']) ? "Unrecognized segmentation \"{$raw['segment']}\" — left Unassigned" : 'No segmentation — left Unassigned';
+            $isRegular = isset($raw['segment']) && preg_match('/^R(EGULAR)?$/i', trim($raw['segment'])) === 1;
+            $warnings[] = isset($raw['segment']) && ! $isRegular ? "Unrecognized segmentation \"{$raw['segment']}\" — left Unassigned" : 'No segmentation — left Unassigned';
         }
 
         // Benefit category
-        $data['category'] = $this->parseCategory($raw['category'] ?? null);
+        $data['category'] = $this->parseCategory($raw['category'] ?? null, $benefitAmounts);
 
         if (isset($raw['category']) && $data['category'] === null) {
             $errors[] = "Invalid category \"{$raw['category']}\"";
@@ -384,11 +414,80 @@ class WorkbookParser
             ?? $this->statusTextMapper->map($raw['remarks'] ?? null);
 
         $data['sex'] = $this->parseSex($raw['sex'] ?? null);
-        $data['contact_number'] = $raw['contact_number'] ?? null;
+        $data['contact_number'] = $this->parseContactNumber($raw['contact_number'] ?? null);
         $data['address'] = $raw['address'] ?? null;
         $data['remarks'] = $raw['remarks'] ?? null;
 
         return $result;
+    }
+
+    /**
+     * Normalize one row of a mobile-number list: the Acct. Number to match and the number to save.
+     * A row without a usable number is an error, so a blank cell never erases a number already on file.
+     *
+     * @param  array<int, mixed>  $cells
+     * @param  array<string, int>  $columns
+     * @return array{blank: bool, data: array<string, mixed>, raw: array<string, string>, errors: list<string>, warnings: list<string>, numeric_account: bool}
+     */
+    public function normalizeContactRow(array $cells, array $columns): array
+    {
+        $raw = [];
+
+        foreach ($columns as $field => $column) {
+            $raw[$field] = $this->cellToString($cells[$column] ?? null);
+        }
+
+        $raw = array_filter($raw, fn (string $value) => $value !== '');
+        $result = ['blank' => $raw === [], 'data' => [], 'raw' => $raw, 'errors' => [], 'warnings' => [], 'numeric_account' => false];
+
+        if ($result['blank']) {
+            return $result;
+        }
+
+        $accountCell = $cells[$columns['account_no']] ?? null;
+        $accountNo = $this->normalizeAccountNumber($accountCell);
+        $name = $raw['full_name'] ?? trim(($raw['last_name'] ?? '').', '.($raw['first_name'] ?? '').' '.($raw['middle_name'] ?? ''), ' ,');
+        $contactNumber = $this->parseContactNumber($raw['contact_number'] ?? null);
+
+        $result['numeric_account'] = is_int($accountCell) || is_float($accountCell);
+        $result['data'] = [
+            'mode' => 'contacts',
+            'account_no' => $accountNo,
+            'account_name' => $name !== '' ? mb_strtoupper(preg_replace('/\s+/', ' ', $name)) : null,
+            'contact_number' => $contactNumber,
+        ];
+
+        if ($accountNo === null) {
+            $result['errors'][] = 'Missing Acct. Number';
+        } elseif (! preg_match('/^[0-9A-Za-z\-]{4,30}$/', $accountNo)) {
+            $result['errors'][] = "Invalid Acct. Number \"{$accountNo}\"";
+        }
+
+        if (! isset($raw['contact_number'])) {
+            $result['errors'][] = 'No mobile number in this row';
+        } elseif ($contactNumber === null) {
+            $result['errors'][] = "Unreadable mobile number \"{$raw['contact_number']}\"";
+        } elseif (SmsGateway::normalizeNumber($contactNumber) === null) {
+            $result['warnings'][] = 'Not a mobile number — saved, but SMS cannot be sent to it';
+        }
+
+        return $result;
+    }
+
+    /**
+     * Contact number as typed, with a single mobile number tidied to 09XXXXXXXXX (Excel drops the leading zero
+     * of numbers stored as numbers). Values too short to be a phone number, such as a row counter, are dropped.
+     */
+    public function parseContactNumber(?string $value): ?string
+    {
+        $text = trim((string) $value);
+        $digits = preg_replace('/\D+/', '', $text) ?? '';
+
+        if (strlen($digits) < 7) {
+            return null;
+        }
+
+        return strlen($digits) <= 12 ? SmsGateway::normalizeNumber($text) ?? $text : $text;
     }
 
     /**
@@ -507,6 +606,9 @@ class WorkbookParser
         return ['account_name' => $accountName !== '' ? mb_strtoupper(preg_replace('/\s+/', ' ', $accountName)) : null, ...$name];
     }
 
+    /**
+     * Diamond, Gold or Silver. "Regular" (R) is no longer a segment: such members are simply Unassigned.
+     */
     public function parseSegment(?string $value): ?string
     {
         $key = Str::upper(trim((string) $value));
@@ -515,15 +617,17 @@ class WorkbookParser
             $key === 'D' || str_starts_with($key, 'DIAMOND') => 'D',
             $key === 'G' || str_starts_with($key, 'GOLD') => 'G',
             $key === 'S' || str_starts_with($key, 'SILVER') => 'S',
-            $key === 'R' || str_starts_with($key, 'REGULAR') => 'R',
             default => null,
         };
     }
 
     /**
-     * "COLISAP40000", "40,000", "40K", "P60,000" → '40000' / '60000'.
+     * "COLISAP40000", "40,000", "40K", "P60,000" → '40000' / '60000' (the basic and the higher category).
+     * When Policy Settings holds other benefit amounts (say ₱50,000 and ₱80,000), those are recognised as well.
+     *
+     * @param  array<string, float>  $benefitAmounts  category key => its current benefit amount
      */
-    public function parseCategory(mixed $value): ?string
+    public function parseCategory(mixed $value, array $benefitAmounts = []): ?string
     {
         $text = Str::upper($this->cellToString($value));
 
@@ -532,6 +636,12 @@ class WorkbookParser
         }
 
         $digits = preg_replace('/[^0-9]/', '', $text) ?? '';
+
+        foreach ($benefitAmounts as $category => $amount) {
+            if ($digits !== '' && in_array($digits, [(string) (int) $amount, (string) (int) ($amount / 1000)], true)) {
+                return (string) $category;
+            }
+        }
 
         return match (true) {
             str_starts_with($digits, '60') => '60000',

@@ -169,7 +169,7 @@
 /* ------------------------------------------------------------------
  * Dashboard: entrance choreography (held while the splash is up)
  * ------------------------------------------------------------------ */
-.fi-dashboard-page .fi-wi > * { animation: colisap-rise .4s cubic-bezier(.22, 1, .36, 1) both; }
+.fi-dashboard-page .fi-wi > * { animation: colisap-rise .4s cubic-bezier(.22, 1, .36, 1) backwards; }
 .fi-dashboard-page .fi-wi > :nth-child(2) { animation-delay: .04s; }
 .fi-dashboard-page .fi-wi > :nth-child(3) { animation-delay: .08s; }
 .fi-dashboard-page .fi-wi > :nth-child(4) { animation-delay: .1s; }
@@ -510,23 +510,6 @@ body.fi-body .fi-topbar .fi-global-search-field .fi-input-wrp:focus-within { box
 @media (min-width: 1024px) { .colisap-topbar-date { display: inline-flex; } }
 .colisap-topbar-date__icon { width: 1rem; height: 1rem; color: #E8691C; }
 
-/* Back button: sits after the mobile menu button, before the search cluster; says which page it returns to. */
-.colisap-back { order: 1; display: inline-flex; align-items: center; gap: .4rem; min-width: 0; max-width: min(22rem, 40vw); padding: .45rem .9rem .45rem .65rem;
-    border-radius: 9999px; white-space: nowrap; font-size: .8rem; font-weight: 600; cursor: pointer; color: var(--cx-chip-text);
-    background: var(--cx-chip-bg); box-shadow: inset 0 0 0 1px var(--cx-chip-ring); transition: box-shadow .2s ease, transform .2s ease; }
-.colisap-back[hidden] { display: none; }
-.colisap-back:hover { box-shadow: inset 0 0 0 1.5px #2E3A8C, 0 6px 18px -10px rgba(46, 58, 140, .5); }
-.colisap-back:hover .colisap-back__icon { transform: translateX(-2px); }
-.colisap-back:focus-visible { outline: 2px solid #E8691C; outline-offset: 2px; }
-.dark .colisap-back:hover { box-shadow: inset 0 0 0 1.5px #7CC4F0; }
-.colisap-back__icon { flex: none; width: 1rem; height: 1rem; color: #E8691C; transition: transform .2s ease; }
-.colisap-back__label { overflow: hidden; text-overflow: ellipsis; }
-body.fi-body .fi-topbar nav > .ms-auto { order: 2; }
-@media (max-width: 639px) {
-    .colisap-back { padding: .5rem; }
-    .colisap-back__label { display: none; }
-}
-
 body.fi-body .fi-topbar .fi-user-avatar { box-shadow: 0 0 0 2px rgb(var(--gray-50)), 0 0 0 3.5px rgba(46, 58, 140, .35); transition: box-shadow .2s ease; }
 body.fi-body .fi-topbar .fi-user-avatar:hover { box-shadow: 0 0 0 2px rgb(var(--gray-50)), 0 0 0 3.5px #E8691C; }
 .dark body.fi-body .fi-topbar .fi-user-avatar { box-shadow: 0 0 0 2px rgb(var(--gray-950)), 0 0 0 3.5px rgba(255, 255, 255, .25); }
@@ -606,8 +589,71 @@ body.fi-body {
     --cx-tint-strong: rgba(255, 255, 255, .06);
 }
 
+/* System Usage report: one summary card (adoption rate + key figures) and one staff activity table */
+.colisap-usage { display: grid; gap: 1.25rem; }
+.colisap-usage-card { border-radius: 1.1rem; background: var(--cx-card-bg); box-shadow: var(--cx-card-shadow); }
+.colisap-usage-summary { display: grid; gap: 2rem; padding: 1.75rem; }
+@media (min-width: 1100px) { .colisap-usage-summary { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 3rem; align-items: center; padding: 2rem 2.25rem; } }
+.colisap-usage-eyebrow { font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--gray-500)); }
+.colisap-usage-rate { display: flex; flex-wrap: wrap; align-items: baseline; gap: .35rem .9rem; margin-top: .6rem; }
+.colisap-usage-rate__value { font-size: 3.4rem; line-height: 1; font-weight: 800; letter-spacing: -.045em; color: var(--cx-ink); font-variant-numeric: tabular-nums; }
+.colisap-usage-rate__text { font-size: 1rem; font-weight: 600; color: var(--cx-ink); }
+.colisap-usage-bar { display: flex; gap: 2px; height: .5rem; margin-top: 1.25rem; border-radius: 9999px; overflow: hidden; background: var(--cx-tint-strong); }
+.colisap-usage-bar__part { min-width: .5rem; }
+.colisap-usage-tone--using { background: #12A27B; }
+.colisap-usage-tone--signed_in { background: #F5B800; }
+.colisap-usage-tone--none { background: #E11D48; }
+.colisap-usage-tone--deactivated { background: #94A3B8; }
+.colisap-usage-legend { display: flex; flex-wrap: wrap; gap: .35rem 1.4rem; margin-top: .85rem; font-size: .82rem; color: rgb(var(--gray-600)); }
+.dark .colisap-usage-legend { color: rgb(var(--gray-400)); }
+.colisap-usage-legend strong { margin-left: .15rem; color: var(--cx-ink); font-variant-numeric: tabular-nums; }
+.colisap-usage-dot { display: inline-block; width: .55rem; height: .55rem; margin-right: .4rem; border-radius: 9999px; vertical-align: middle; }
+.colisap-usage-followup { margin-top: 1.1rem; padding-top: 1rem; border-top: 1px solid var(--cx-hairline); font-size: .85rem; color: rgb(var(--gray-600)); }
+.dark .colisap-usage-followup { color: rgb(var(--gray-400)); }
+.colisap-usage-followup strong { color: var(--cx-ink); font-weight: 600; }
+.colisap-usage-figures { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.5rem 0; }
+@media (min-width: 640px) { .colisap-usage-figures { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.colisap-usage-figure { padding: .1rem 1.25rem; border-left: 1px solid var(--cx-hairline); }
+.colisap-usage-figure dt { font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgb(var(--gray-500)); }
+.colisap-usage-figure__value { display: block; margin-top: .3rem; font-size: 1.65rem; line-height: 1.15; font-weight: 800; letter-spacing: -.03em; color: var(--cx-ink); font-variant-numeric: tabular-nums; }
+.colisap-usage-figure__note { display: block; margin-top: .1rem; font-size: .76rem; color: rgb(var(--gray-500)); }
+.colisap-usage-card__header { padding: 1.35rem 1.75rem 1rem; }
+.colisap-usage-card__header h2 { font-size: .98rem; font-weight: 700; letter-spacing: -.01em; color: var(--cx-ink); }
+.colisap-usage-card__header p { margin-top: .2rem; font-size: .82rem; color: rgb(var(--gray-500)); }
+.colisap-usage-table-wrap { overflow-x: auto; }
+.colisap-usage-table { width: 100%; min-width: 62rem; table-layout: fixed; border-collapse: collapse; font-size: .875rem; }
+.colisap-usage-table th { padding: .65rem 1rem; text-align: left; font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgb(var(--gray-500)); background: var(--cx-tint); border-top: 1px solid var(--cx-hairline); border-bottom: 1px solid var(--cx-hairline); }
+.colisap-usage-table td { padding: .95rem 1rem; vertical-align: middle; line-height: 1.45; color: rgb(var(--gray-700)); border-bottom: 1px solid var(--cx-hairline); }
+.dark .colisap-usage-table td { color: rgb(var(--gray-300)); }
+.colisap-usage-table th:first-child, .colisap-usage-table td:first-child { padding-left: 1.75rem; }
+.colisap-usage-table th:last-child, .colisap-usage-table td:last-child { padding-right: 1.75rem; }
+.colisap-usage-person { display: flex; align-items: center; gap: .75rem; }
+.colisap-usage-avatar { display: grid; place-items: center; flex: none; width: 2.25rem; height: 2.25rem; border-radius: 9999px; font-size: .75rem; font-weight: 700; color: #2E3A8C; background: var(--cx-tint-strong); }
+.dark .colisap-usage-avatar { color: #C7D0FF; }
+.colisap-usage-person__name { display: block; font-weight: 600; color: var(--cx-ink); }
+.colisap-usage-sub { display: block; font-size: .76rem; color: rgb(var(--gray-500)); }
+.colisap-usage-status { display: inline-flex; align-items: center; font-weight: 600; color: var(--cx-ink); white-space: nowrap; }
+.colisap-usage-note { padding: 1rem 1.75rem 1.35rem; font-size: .78rem; color: rgb(var(--gray-500)); }
+.colisap-days { display: flex; flex-wrap: wrap; gap: 2px; max-width: 12.5rem; margin-bottom: .3rem; }
+.colisap-day { width: .75rem; height: .75rem; border-radius: 3px; background: var(--cx-tint-strong); }
+.colisap-day--on { background: #2E3A8C; }
+.dark .colisap-day--on { background: #8FA2FF; }
+
+/* Import steps that have been reached can be opened again. */
+.colisap-step--open { cursor: pointer; }
+.colisap-step--open:hover { background: var(--cx-tint-strong); color: var(--cx-ink); }
+.colisap-step--open:focus-visible { outline: 2px solid #E8691C; outline-offset: 2px; }
+.colisap-facts { display: grid; gap: .9rem 1.5rem; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
+.colisap-facts dt { font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgb(var(--gray-500)); }
+.colisap-facts dd { margin-top: .15rem; font-weight: 600; color: var(--cx-ink); overflow-wrap: anywhere; }
+.colisap-mapping { width: 100%; min-width: 34rem; border-collapse: collapse; font-size: .875rem; }
+.colisap-mapping th { padding: .55rem .75rem; text-align: left; font-size: .68rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgb(var(--gray-500)); border-bottom: 1px solid var(--cx-hairline); }
+.colisap-mapping td { padding: .6rem .75rem; color: rgb(var(--gray-700)); border-bottom: 1px solid var(--cx-hairline); }
+.dark .colisap-mapping td { color: rgb(var(--gray-300)); }
 /* Page entrance (dashboard has its own choreography) */
-.fi-main .fi-page:not(.fi-dashboard-page) { animation: colisap-fade-up .3s ease both; }
+/* "backwards", never "both": an animation that stays applied after it ends makes the page the frame for every
+   pop-up inside it, so modal forms opened trapped in the page area instead of over the whole window. */
+.fi-main .fi-page:not(.fi-dashboard-page) { animation: colisap-fade-up .3s ease backwards; }
 .colisap-lite .fi-main .fi-page { animation: none; }
 
 /* Page header */

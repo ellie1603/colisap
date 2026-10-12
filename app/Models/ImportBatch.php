@@ -23,10 +23,12 @@ class ImportBatch extends Model
         'uploaded' => 'Uploaded',
         'analyzed' => 'Mapping',
         'staged' => 'Ready to import',
+        'awaiting_approval' => 'Awaiting approval',
         'importing' => 'Importing',
         'completed' => 'Completed',
         'failed' => 'Failed',
         'cancelled' => 'Cancelled',
+        'rejected' => 'Rejected',
     ];
 
     protected $fillable = [
@@ -60,8 +62,8 @@ class ImportBatch extends Model
     {
         return match ($status) {
             'completed' => 'success',
-            'failed' => 'danger',
-            'importing' => 'warning',
+            'failed', 'rejected' => 'danger',
+            'importing', 'awaiting_approval' => 'warning',
             'cancelled' => 'gray',
             default => 'info',
         };

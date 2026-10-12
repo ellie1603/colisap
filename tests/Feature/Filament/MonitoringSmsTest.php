@@ -62,6 +62,52 @@ class MonitoringSmsTest extends TestCase
         );
     }
 
+    public function test_the_can_upgrade_view_lists_active_40k_members_with_the_60k_balance_and_invites_them_by_sms(): void
+    {
+        $this->fakeGatewayAcceptingMessages();
+        $qualified = Member::factory()->create([
+            'first_name' => 'Maria', 'contact_number' => '09171234567', 'savings_balance' => 2000,
+            'branch_id' => Branch::where('name', 'Sibalom')->value('id'),
+        ]);
+        $belowTheMinimum = Member::factory()->create(['savings_balance' => 1999.99]);
+        $already60k = Member::factory()->category60000()->create(['savings_balance' => 5000]);
+        $alreadyRequested = Member::factory()->create(['savings_balance' => 5000, 'category_upgrade_requested_at' => now()->subDays(10)]);
+        $stillWaiting = Member::factory()->waiting()->create(['savings_balance' => 5000]);
+        $this->actingAsRole(Permissions::CRS);
+
+        Livewire::withQueryParams(['tab' => 'qualified'])
+            ->test(Monitoring::class)
+            ->assertCanSeeTableRecords([$qualified])
+            ->assertCanNotSeeTableRecords([$belowTheMinimum, $already60k, $alreadyRequested, $stillWaiting])
+            ->assertTableActionHidden('requestUpgrade', $qualified)
+            ->callTableAction('sendSms', $qualified)
+            ->assertNotified('1 SMS queued for sending');
+
+        Http::assertSent(fn (Request $request) => $request->data() === [
+            'to' => '09171234567',
+            'message' => 'Good day, Maria! Your savings of P2,000 qualifies you to upgrade your COLISAP coverage from 40K to the 60K category. Please visit your Barbaza MPC branch (Sibalom) to apply. - Barbaza MPC',
+        ]);
+    }
+
+    public function test_recording_an_upgrade_request_moves_the_member_from_can_upgrade_to_the_90_day_view(): void
+    {
+        $this->travelTo('2026-10-07 09:00:00');
+        $member = Member::factory()->create(['savings_balance' => 3000]);
+        $this->actingAsRole(Permissions::ADMIN);
+
+        Livewire::withQueryParams(['tab' => 'qualified'])
+            ->test(Monitoring::class)
+            ->callTableAction('requestUpgrade', $member)
+            ->assertNotified('Upgrade request recorded')
+            ->assertCanNotSeeTableRecords([$member]);
+
+        $this->assertSame('2026-10-07', $member->refresh()->category_upgrade_requested_at->toDateString());
+
+        Livewire::withQueryParams(['tab' => 'upgrades'])
+            ->test(Monitoring::class)
+            ->assertCanSeeTableRecords([$member]);
+    }
+
     public function test_selected_members_each_get_the_effectivity_reminder_and_those_without_a_number_are_skipped(): void
     {
         $this->fakeGatewayAcceptingMessages();

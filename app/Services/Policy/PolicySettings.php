@@ -101,6 +101,20 @@ class PolicySettings
         return $category === '60000' ? $this->decimal('benefit_60k') : $this->decimal('benefit_40k');
     }
 
+    /**
+     * Short name of a benefit category, taken from its benefit amount: ₱40,000 → "40K", ₱62,500 → "62.5K".
+     */
+    public function categoryLabel(?string $category): string
+    {
+        $amount = $this->benefitFor($category);
+
+        if ($amount < 1000) {
+            return number_format($amount);
+        }
+
+        return rtrim(rtrim(number_format($amount / 1000, 1, '.', ','), '0'), '.').'K';
+    }
+
     public function minimumBalanceFor(?string $category): float
     {
         return $category === '60000' ? $this->decimal('min_balance_60k') : $this->decimal('min_balance_40k');

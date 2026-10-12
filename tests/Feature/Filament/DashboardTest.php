@@ -2,8 +2,6 @@
 
 namespace Tests\Feature\Filament;
 
-use App\Filament\Pages\Monitoring;
-use App\Filament\Resources\MemberResource;
 use App\Filament\Widgets\AlertsWidget;
 use App\Filament\Widgets\MemberStatusChart;
 use App\Filament\Widgets\MemberStatusStats;
@@ -74,14 +72,21 @@ class DashboardTest extends TestCase
             ->assertSee('New approvals');
     }
 
-    public function test_status_by_branch_covers_all_fifteen_branches(): void
+    public function test_status_by_branch_covers_the_fourteen_branches_in_their_official_code_order(): void
     {
         Member::factory()->create(['branch_id' => Branch::where('name', 'Altavas')->value('id')]);
         $this->actingAsRole(Permissions::ADMIN);
 
         $data = $this->chartData(StatusByBranchChart::class);
 
-        $this->assertCount(15, $data['labels']);
+        $this->assertSame(
+            ['Barbaza', 'Culasi', 'Sibalom', 'San Jose', 'Balasan', 'Barotac Viejo', 'Caticlan', 'Molo', 'Kalibo', 'Janiuay', 'Calinog', 'Sara', 'President Roxas', 'Altavas'],
+            $data['labels'],
+        );
+        $this->assertSame(
+            ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014'],
+            Branch::orderBy('sort_order')->pluck('code')->all(),
+        );
         $this->assertSame(1, $data['datasets'][1]['data'][array_search('Altavas', $data['labels'], true)]);
     }
 
@@ -117,18 +122,8 @@ class DashboardTest extends TestCase
             ->assertOk()
             ->assertSeeInOrder(['colisap-sidebar-logout', 'action="'.filament()->getLogoutUrl().'"', 'Logout'], escape: false)
             ->assertSee('class="colisap-theme-toggle"', escape: false)
+            ->assertDontSee('colisap-back', escape: false)
             ->assertDontSee('toggleCollapsedGroup', escape: false);
-    }
-
-    public function test_the_topbar_back_button_is_rendered_hidden_so_only_detail_pages_reveal_it(): void
-    {
-        $this->actingAsRole(Permissions::CRS);
-
-        foreach (['/admin', Monitoring::getUrl(), MemberResource::getUrl('index')] as $url) {
-            $this->get($url)
-                ->assertOk()
-                ->assertSee('class="colisap-back" data-colisap-back hidden', escape: false);
-        }
     }
 
     public function test_signing_out_from_the_sidebar_ends_the_session(): void

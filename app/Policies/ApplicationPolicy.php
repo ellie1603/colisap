@@ -6,7 +6,7 @@ class ApplicationPolicy extends PermissionPolicy
 {
     protected string $viewPermission = 'applications.view';
 
-    protected string $createPermission = 'applications.manage';
+    protected string $createPermission = 'applications.create';
 
     protected string $updatePermission = 'applications.manage';
 

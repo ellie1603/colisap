@@ -36,7 +36,7 @@ class MemberFactory extends Factory
             'approval_date' => now()->subDays(210),
             'status' => 'active',
             'category' => '40000',
-            'segment' => fake()->randomElement(['D', 'G', 'S', 'R']),
+            'segment' => fake()->randomElement(['D', 'G', 'S', null]),
             'activated_at' => now()->subDays(30),
             'savings_balance' => 5000,
         ];

@@ -79,9 +79,9 @@ class BranchRestrictionTest extends TestCase
         $this->actingAsStaff($role, $homeBranch);
 
         $this->assertSame(2, app(MonitoringService::class)->statusCounts()['active']);
-        $this->assertCount(15, app(MonitoringService::class)->statusByBranch());
+        $this->assertCount(14, app(MonitoringService::class)->statusByBranch());
         $this->assertTrue(StatusByBranchChart::canView());
-        $this->assertCount(15, Branch::options());
+        $this->assertCount(14, Branch::options());
     }
 
     public function test_member_list_and_monitoring_hide_members_of_other_branches(): void

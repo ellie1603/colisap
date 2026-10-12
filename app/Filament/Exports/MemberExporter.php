@@ -3,6 +3,7 @@
 namespace App\Filament\Exports;
 
 use App\Models\Member;
+use App\Services\Policy\PolicySettings;
 use App\Services\Reports\SpreadsheetWriter;
 use Illuminate\Database\Eloquent\Builder;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -38,7 +39,10 @@ class MemberExporter
      */
     public function organizedHeadings(): array
     {
-        return ['CIF Key', 'Account Name', 'Branch', 'Segmentation', 'Category (40,000 / 60,000)', 'Application Date', 'Status', 'Saving Balance'];
+        $policy = app(PolicySettings::class);
+        $category = 'Category ('.number_format($policy->benefitFor(Member::BASIC_CATEGORY)).' / '.number_format($policy->benefitFor(Member::HIGHER_CATEGORY)).')';
+
+        return ['CIF Key', 'Account Name', 'Branch', 'Segmentation', $category, 'Application Date', 'Status', 'Saving Balance'];
     }
 
     /**

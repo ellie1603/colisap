@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\MemberResource\Pages;
 
+use App\Filament\Concerns\ReturnsToPreviousPage;
 use App\Filament\Resources\MemberResource;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
@@ -10,6 +11,8 @@ use Livewire\Attributes\On;
 
 class EditMember extends EditRecord
 {
+    use ReturnsToPreviousPage;
+
     protected static string $resource = MemberResource::class;
 
     protected function getHeaderActions(): array
@@ -67,6 +70,6 @@ class EditMember extends EditRecord
 
     protected function getRedirectUrl(): string
     {
-        return MemberResource::getUrl('view', ['record' => $this->record]);
+        return $this->previousPageOr(MemberResource::getUrl('view', ['record' => $this->record]));
     }
 }

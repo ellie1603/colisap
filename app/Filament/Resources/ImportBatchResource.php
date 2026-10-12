@@ -89,9 +89,9 @@ class ImportBatchResource extends Resource
             ->actions([
                 Tables\Actions\ViewAction::make()->iconButton(),
                 Tables\Actions\Action::make('resume')
-                    ->label('Continue')
+                    ->label(fn (ImportBatch $record) => $record->status === 'awaiting_approval' ? 'Open' : 'Continue')
                     ->icon('heroicon-o-play')
-                    ->visible(fn (ImportBatch $record) => in_array($record->status, ['analyzed', 'staged', 'importing'], true) && (auth()->user()?->can('members.import') ?? false))
+                    ->visible(fn (ImportBatch $record) => in_array($record->status, ['analyzed', 'staged', 'awaiting_approval', 'importing'], true) && (auth()->user()?->can('members.import') ?? false))
                     ->url(fn (ImportBatch $record) => MemberResource::getUrl('import', ['batch' => $record->id])),
                 Tables\Actions\Action::make('deleteImportedData')
                     ->label('Delete')

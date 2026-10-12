@@ -28,6 +28,13 @@ class PolicySettings extends Page
     protected static string $view = 'filament.pages.policy-settings';
 
     /**
+     * Settings the system still uses but the Administrator no longer edits here (they keep their current values).
+     *
+     * @var list<string>
+     */
+    private const HIDDEN_GROUPS = ['Program'];
+
+    /**
      * @var array<string, mixed>|null
      */
     public ?array $data = [];
@@ -45,6 +52,7 @@ class PolicySettings extends Page
     public function form(Form $form): Form
     {
         $sections = collect(PolicyDefaults::SETTINGS)
+            ->reject(fn (array $setting) => in_array($setting['group'], self::HIDDEN_GROUPS, true))
             ->groupBy('group', preserveKeys: true)
             ->map(fn ($settings, $group) => Forms\Components\Section::make($group)
                 ->columns(['default' => 1, 'md' => 2])

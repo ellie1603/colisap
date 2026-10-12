@@ -107,7 +107,7 @@ class MemberResource extends Resource
                                 : 'The waiting period starts on the approval date.'),
                         Forms\Components\Select::make('category')
                             ->label('Benefit category')
-                            ->options(Member::CATEGORIES)
+                            ->options(Member::categoryOptions())
                             ->default('40000')
                             ->required()
                             ->disabled(fn (string $operation) => $operation === 'edit' && ! static::canEditColisapFields()),
@@ -132,15 +132,6 @@ class MemberResource extends Resource
                         Forms\Components\TextInput::make('termination_reason')
                             ->visible(fn (Forms\Get $get) => $get('status') === 'terminated')
                             ->required(fn (Forms\Get $get) => $get('status') === 'terminated'),
-                        Forms\Components\TextInput::make('savings_balance')
-                            ->label('Opening savings balance')
-                            ->numeric()
-                            ->minValue(0)
-                            ->prefix('₱')
-                            ->default(0)
-                            ->visibleOn('create')
-                            ->dehydrated(false)
-                            ->helperText('Recorded as the first savings entry. Later changes come from savings transactions or the masterlist.'),
                         Forms\Components\Select::make('savings_account_status')
                             ->label('Savings account flag')
                             ->options(['dormant-txn' => 'Dormant (transaction)', 'dormant-bal' => 'Dormant (balance)'])
@@ -183,9 +174,9 @@ class MemberResource extends Resource
                                 Infolists\Components\TextEntry::make('effectivity')->label('Effectivity date')
                                     ->state(fn (Member $record) => $record->effectivityDate()?->toFormattedDateString() ?? 'No approval date')
                                     ->helperText(fn (Member $record) => $record->status === 'waiting' && $record->daysUntilEffective() !== null ? $record->daysUntilEffective().' day(s) remaining' : null),
-                                Infolists\Components\TextEntry::make('upgrade')->label('60K upgrade')
+                                Infolists\Components\TextEntry::make('upgrade')->label(Member::higherCategoryLabel().' upgrade')
                                     ->state(fn (Member $record) => match ($record->upgradeStatus()) {
-                                        'upgraded' => 'Already 60K',
+                                        'upgraded' => 'Already '.Member::higherCategoryLabel(),
                                         'eligible' => 'Eligible since '.$record->upgradeEligibleDate()->toFormattedDateString(),
                                         'pending' => 'Eligible on '.$record->upgradeEligibleDate()->toFormattedDateString(),
                                         default => 'No request',
@@ -285,7 +276,6 @@ class MemberResource extends Resource
                 Tables\Columns\TextColumn::make('branch.name')
                     ->label('Branch')
                     ->sortable()
-                    ->toggleable()
                     ->visibleFrom('md'),
                 Tables\Columns\TextColumn::make('segment')
                     ->label('Segmentation')
@@ -293,13 +283,11 @@ class MemberResource extends Resource
                     ->formatStateUsing(fn (Member $record) => Member::segmentLabel($record->segment))
                     ->default('—')
                     ->color(fn (Member $record) => $record->segment ? 'primary' : 'gray')
-                    ->toggleable()
                     ->visibleFrom('lg'),
                 Tables\Columns\TextColumn::make('category')
                     ->badge()
                     ->formatStateUsing(fn (string $state) => Member::categoryLabel($state))
                     ->color(fn (string $state) => $state === '60000' ? 'warning' : 'gray')
-                    ->toggleable()
                     ->visibleFrom('sm'),
                 Tables\Columns\TextColumn::make('membership_date')
                     ->label('Application Date')
@@ -307,7 +295,6 @@ class MemberResource extends Resource
                     ->date()
                     ->placeholder('—')
                     ->sortable(query: fn (Builder $query, string $direction) => $query->orderByRaw('coalesce(application_date, approval_date) '.($direction === 'desc' ? 'desc' : 'asc')))
-                    ->toggleable()
                     ->visibleFrom('lg'),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
@@ -321,28 +308,7 @@ class MemberResource extends Resource
                     ->sortable()
                     ->alignEnd()
                     ->color(fn (Member $record) => $record->meetsMinimumBalance() ? null : 'danger')
-                    ->toggleable()
                     ->visibleFrom('md'),
-                Tables\Columns\TextColumn::make('approval_date')
-                    ->date()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('effectivity_date')
-                    ->label('Effectivity')
-                    ->state(fn (Member $record) => $record->effectivityDate())
-                    ->date()
-                    ->description(fn (Member $record) => $record->status === 'waiting' && $record->daysUntilEffective() !== null ? $record->daysUntilEffective().' days left' : null)
-                    ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('approval_date', $direction))
-                    ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('last_activity_date')
-                    ->label('Last activity')
-                    ->date()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('updated_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
@@ -372,7 +338,7 @@ class MemberResource extends Resource
                     })),
                 Tables\Filters\SelectFilter::make('category')
                     ->label('Category')
-                    ->options(Member::CATEGORIES),
+                    ->options(Member::categoryOptions()),
                 Tables\Filters\TernaryFilter::make('below_minimum')
                     ->label('Savings vs. minimum')
                     ->placeholder('All')
@@ -431,7 +397,7 @@ class MemberResource extends Resource
             ->filtersFormColumns(['sm' => 2, 'lg' => 3])
             ->persistFiltersInSession()
             ->actions([
-                Tables\Actions\ViewAction::make()->iconButton(),
+                // No "view" button: clicking a row already opens the member, and a button per row slows the list.
                 Tables\Actions\EditAction::make()->iconButton(),
                 Tables\Actions\RestoreAction::make(),
             ])
@@ -445,8 +411,9 @@ class MemberResource extends Resource
             ])
             ->recordUrl(fn (Member $record) => static::getUrl('view', ['record' => $record]))
             ->defaultSort('account_name')
-            ->paginated([25, 50, 100, 250])
-            ->defaultPaginationPageOption(25)
+            // Each row costs time to draw, so the list opens with 10 (measured: 25 rows took about twice as long).
+            ->paginated([10, 25, 50, 100])
+            ->defaultPaginationPageOption(10)
             ->striped();
     }
 
@@ -487,7 +454,6 @@ class MemberResource extends Resource
     {
         return [
             'index' => Pages\ListMembers::route('/'),
-            'create' => Pages\CreateMember::route('/create'),
             'import' => Pages\ImportMembers::route('/import'),
             'view' => Pages\ViewMember::route('/{record}'),
             'edit' => Pages\EditMember::route('/{record}/edit'),

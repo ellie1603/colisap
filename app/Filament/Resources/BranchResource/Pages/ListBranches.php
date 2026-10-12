@@ -13,7 +13,11 @@ class ListBranches extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            Actions\CreateAction::make(),
+            Actions\CreateAction::make()
+                ->modalHeading('New branch')
+                ->modalSubmitActionLabel('Create branch')
+                ->createAnother(false)
+                ->successNotificationTitle('Branch created'),
         ];
     }
 }

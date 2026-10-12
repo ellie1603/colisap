@@ -2,11 +2,13 @@
 
 namespace App\Filament\Widgets;
 
+use App\Models\Member;
+
 class UpgradeChart extends ColisapChart
 {
     protected static ?string $heading = '90-day upgrade monitoring';
 
-    protected static ?string $description = '40K members on the 90-day upgrade path.';
+    protected static ?string $description = 'Members waiting out the upgrade period.';
 
     protected int|string|array $columnSpan = 1;
 
@@ -17,6 +19,6 @@ class UpgradeChart extends ColisapChart
 
     protected function getData(): array
     {
-        return $this->single('40K members', $this->monitoring()->upgradeSummary(), [self::GREEN, self::SKY, self::MIST]);
+        return $this->single(Member::basicCategoryLabel().' members', $this->monitoring()->upgradeSummary(), [self::GREEN, self::SKY, self::MIST]);
     }
 }

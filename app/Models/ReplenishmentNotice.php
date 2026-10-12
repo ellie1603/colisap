@@ -23,7 +23,7 @@ class ReplenishmentNotice extends Model
         'open' => 'Open',
         'replenished' => 'Replenished',
         'terminated' => 'Expired — terminated',
-        'downgraded' => 'Expired — downgraded to 40K',
+        'downgraded' => 'Expired — downgraded',
         'cancelled' => 'Cancelled',
     ];
 

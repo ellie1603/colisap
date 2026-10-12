@@ -94,7 +94,6 @@ class AuditLogResource extends Resource
                 Tables\Columns\TextColumn::make('module')->searchable()->visibleFrom('sm'),
                 Tables\Columns\TextColumn::make('auditable_id')->label('Record')->visibleFrom('md'),
                 Tables\Columns\TextColumn::make('reason')->limit(40)->placeholder('—')->visibleFrom('lg'),
-                Tables\Columns\TextColumn::make('ip_address')->label('IP')->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('module')

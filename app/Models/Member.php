@@ -39,15 +39,15 @@ class Member extends Model
     public const TERMINAL_STATUSES = ['deceased', 'terminated', 'withdrawn'];
 
     /**
-     * @var array<string, string>
+     * The two benefit categories as stored on a member. What they are called on screen ("40K", "60K")
+     * follows the benefit amounts in Policy Settings — see categoryOptions().
      */
-    public const CATEGORIES = [
-        '40000' => '40K',
-        '60000' => '60K',
-    ];
+    public const BASIC_CATEGORY = '40000';
+
+    public const HIGHER_CATEGORY = '60000';
 
     /**
-     * Member segmentation — independent of the 40K/60K benefit category.
+     * Member segmentation — independent of the benefit category.
      *
      * @var array<string, string>
      */
@@ -55,7 +55,6 @@ class Member extends Model
         'D' => 'Diamond',
         'G' => 'Gold',
         'S' => 'Silver',
-        'R' => 'Regular',
     ];
 
     /**
@@ -226,7 +225,33 @@ class Member extends Model
 
     public static function categoryLabel(?string $category): string
     {
-        return self::CATEGORIES[$category] ?? '—';
+        return self::categoryOptions()[$category] ?? '—';
+    }
+
+    /**
+     * Category choices for selects and labels, named after the benefit amounts currently in Policy Settings
+     * (₱40,000 shows as "40K"). If the cooperative changes an amount, every screen follows.
+     *
+     * @return array<string, string>
+     */
+    public static function categoryOptions(): array
+    {
+        $policy = app(PolicySettings::class);
+
+        return [
+            self::BASIC_CATEGORY => $policy->categoryLabel(self::BASIC_CATEGORY),
+            self::HIGHER_CATEGORY => $policy->categoryLabel(self::HIGHER_CATEGORY),
+        ];
+    }
+
+    public static function basicCategoryLabel(): string
+    {
+        return self::categoryOptions()[self::BASIC_CATEGORY];
+    }
+
+    public static function higherCategoryLabel(): string
+    {
+        return self::categoryOptions()[self::HIGHER_CATEGORY];
     }
 
     public function fullName(): string
@@ -460,14 +485,14 @@ class Member extends Model
     public function requestCategoryUpgrade(?Carbon $requestedAt = null): void
     {
         if ($this->category !== '40000' || $this->status !== 'active') {
-            throw new \RuntimeException('Only active 40K members may request a category upgrade.');
+            throw new \RuntimeException('Only active members in the basic category may request a category upgrade.');
         }
 
         $this->update(['category_upgrade_requested_at' => $requestedAt ?? Carbon::today()]);
     }
 
     /**
-     * Move an eligible member to 60K once the upgrade waiting period has passed.
+     * Move an eligible member to the higher category once the upgrade waiting period has passed.
      */
     public function applyCategoryUpgradeIfEligible(): bool
     {

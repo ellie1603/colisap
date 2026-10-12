@@ -70,7 +70,7 @@ class AccessControlTest extends TestCase
 
     public function test_crs_cannot_change_status_category_or_segmentation(): void
     {
-        $member = Member::factory()->create(['category' => '40000', 'segment' => 'R']);
+        $member = Member::factory()->create(['category' => '40000', 'segment' => 'S']);
         $this->actingAsRole(Permissions::CRS);
 
         Livewire::test(EditMember::class, ['record' => $member->getRouteKey()])

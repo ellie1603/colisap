@@ -3,7 +3,7 @@
 namespace Tests\Feature\Filament\Resources\MemberResource\Pages;
 
 use App\Filament\Resources\MemberResource;
-use App\Filament\Resources\MemberResource\Pages\CreateMember;
+use App\Filament\Resources\MemberResource\Pages\ListMembers;
 use App\Models\Branch;
 use App\Models\Member;
 use App\Services\Access\Permissions;
@@ -33,30 +33,14 @@ class MemberFormTest extends TestCase
         ];
     }
 
-    public function test_crs_enrolls_member_with_opening_balance(): void
+    public function test_members_cannot_be_added_from_the_members_module(): void
     {
-        $this->actingAsRole(Permissions::CRS);
+        $this->actingAsRole(Permissions::ADMIN);
 
-        Livewire::test(CreateMember::class)
-            ->fillForm($this->memberData())
-            ->call('create')
-            ->assertHasNoFormErrors();
-
-        $member = Member::where('account_no', '00101959720')->sole();
-
-        $this->assertSame(['waiting', 'DELA CRUZ, JUAN', '750.00'], [$member->status, $member->account_name, $member->savings_balance]);
-        $this->assertSame('approved', $member->applications()->sole()->status);
-    }
-
-    public function test_duplicate_account_number_is_rejected(): void
-    {
-        Member::factory()->create(['account_no' => '00101959720']);
-        $this->actingAsRole(Permissions::CRS);
-
-        Livewire::test(CreateMember::class)
-            ->fillForm($this->memberData())
-            ->call('create')
-            ->assertHasFormErrors(['account_no' => 'unique']);
+        Livewire::test(ListMembers::class)
+            ->assertActionDoesNotExist('create')
+            ->assertActionExists('import')
+            ->assertDontSee('Add member');
     }
 
     public function test_member_screens_no_longer_ask_for_or_show_beneficiaries(): void
@@ -64,7 +48,7 @@ class MemberFormTest extends TestCase
         $member = Member::factory()->create();
         $this->actingAsRole(Permissions::ADMIN);
 
-        $this->get(MemberResource::getUrl('create'))->assertOk()->assertDontSee('Beneficiar');
+        $this->get(MemberResource::getUrl('edit', ['record' => $member]))->assertOk()->assertDontSee('Beneficiar');
         $this->get(MemberResource::getUrl('view', ['record' => $member]))->assertOk()->assertDontSee('Beneficiar');
         $this->get('/admin/beneficiaries')->assertNotFound();
         $this->assertTrue($member->isEligible(), 'Coverage no longer depends on beneficiaries.');

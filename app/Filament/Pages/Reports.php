@@ -63,7 +63,7 @@ class Reports extends Page
                     ->placeholder('All statuses')
                     ->hidden(fn (Forms\Get $get) => str_starts_with((string) $get('report'), 'status_') || in_array($get('report'), ['effectivity', 'branch_summary', 'import_history'], true)),
                 Forms\Components\Select::make('category')
-                    ->options(Member::CATEGORIES)
+                    ->options(Member::categoryOptions())
                     ->placeholder('All categories')
                     ->hidden(fn (Forms\Get $get) => str_starts_with((string) $get('report'), 'category_') || in_array($get('report'), ['upgrades', 'branch_summary', 'import_history'], true)),
                 Forms\Components\Select::make('segment')
@@ -84,6 +84,8 @@ class Reports extends Page
     {
         $data = $this->form->getState();
         $format = in_array($format, ['pdf', ...array_keys(SpreadsheetWriter::FORMATS)], true) ? $format : 'xlsx';
+
+        Auth::user()?->recordActivity('report_exported', 'Reports', ['report' => $data['report'], 'format' => $format]);
 
         return app(ReportService::class)->download($data['report'], $format, [
             'branch_ids' => array_map('intval', $data['branch_ids'] ?? []),

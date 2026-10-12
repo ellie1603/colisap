@@ -34,7 +34,8 @@ final class Permissions
         'members.import' => 'Import Excel masterlist',
         'members.export' => 'Export members',
         'applications.view' => 'View applications',
-        'applications.manage' => 'Process applications, re-applications & withdrawals',
+        'applications.create' => 'File applications',
+        'applications.manage' => 'Approve or reject applications, re-applications & withdrawals',
         'savings.view' => 'View savings',
         'savings.manage' => 'Record savings transactions',
         'monitoring.view' => 'View monitoring & alerts',
@@ -42,6 +43,7 @@ final class Permissions
         'monitoring.send_sms' => 'Send SMS reminders to members',
         'reports.view' => 'Generate reports',
         'imports.view' => 'View import history',
+        'imports.approve' => 'Approve Excel imports sent by branches',
         'branches.manage' => 'Manage branches',
         'users.manage' => 'Manage users',
         'roles.manage' => 'Manage roles & permissions',
@@ -60,7 +62,7 @@ final class Permissions
             self::ADMIN => array_keys(self::ALL),
             self::CRS => [
                 'members.view', 'members.create', 'members.update', 'members.import', 'members.export',
-                'applications.view', 'savings.view', 'monitoring.view', 'monitoring.send_sms', 'reports.view', 'imports.view',
+                'applications.view', 'applications.create', 'savings.view', 'monitoring.view', 'monitoring.send_sms', 'reports.view', 'imports.view',
             ],
         ];
     }

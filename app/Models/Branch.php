@@ -18,13 +18,11 @@ class Branch extends Model
     protected $fillable = [
         'name',
         'code',
-        'aliases',
         'sort_order',
         'is_active',
     ];
 
     protected $casts = [
-        'aliases' => 'array',
         'is_active' => 'boolean',
     ];
 
@@ -86,7 +84,7 @@ class Branch extends Model
     }
 
     /**
-     * Normalize a free-text branch/sheet name ("BAROTAC VIEJO", "Guinsangan", "Pres. Roxas") to a master branch.
+     * Normalize a free-text branch/sheet name ("BAROTAC VIEJO", "San Jose Branch", "Pres. Roxas") to a master branch.
      */
     public static function resolve(?string $name): ?self
     {
@@ -99,7 +97,7 @@ class Branch extends Model
         $branches = self::$lookupCache[0] ??= static::query()->orderBy('sort_order')->get();
 
         foreach ($branches as $branch) {
-            $candidates = [$branch->name, $branch->code, ...($branch->aliases ?? [])];
+            $candidates = [$branch->name, $branch->code];
 
             foreach ($candidates as $candidate) {
                 if ($candidate !== null && self::normalize($candidate) === $key) {

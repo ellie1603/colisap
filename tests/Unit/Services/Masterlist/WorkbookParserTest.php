@@ -44,6 +44,47 @@ class WorkbookParserTest extends TestCase
         ], $columns);
     }
 
+    /**
+     * @return array<string, array{0: list<string>, 1: bool}>
+     */
+    public static function contactListHeaders(): array
+    {
+        return [
+            'cif key, name, number' => [['CIF Key', 'Name', 'Number'], true],
+            'cp no. heading' => [['Acct. Number', 'Account Name', 'CP No.'], true],
+            'cellphone number without a name' => [['CIF Key', 'Cellphone Number'], true],
+            'split names and mobile' => [['Account No', 'Last Name', 'First Name', 'Mobile'], true],
+            'a masterlist with a contact column' => [['Acct. Number', 'Account Name', 'Category', 'Savings Balance', 'Contact No.'], false],
+            'names without a number' => [['CIF Key', 'Name'], false],
+        ];
+    }
+
+    /**
+     * @param  list<string>  $header
+     */
+    #[DataProvider('contactListHeaders')]
+    public function test_a_sheet_with_only_cif_key_name_and_number_is_a_mobile_number_list(array $header, bool $expected): void
+    {
+        [, $columns] = $this->parser()->detectHeader([$header]);
+
+        $this->assertSame($expected, WorkbookParser::isContactList($columns));
+    }
+
+    public function test_a_mobile_number_list_row_gives_the_account_and_the_tidied_number(): void
+    {
+        [, $columns] = $this->parser()->detectHeader([['CIF Key', 'Name', 'Number']]);
+
+        $this->assertSame(
+            ['mode' => 'contacts', 'account_no' => '00301493995', 'account_name' => 'VICTORIANO, PEDRO JR T', 'contact_number' => '09171234567'],
+            $this->parser()->normalizeContactRow(['00301493995', 'Victoriano,  Pedro Jr T', '+63 917 123 4567'], $columns)['data'],
+        );
+        $this->assertSame(['Unreadable mobile number "n/a"'], $this->parser()->normalizeContactRow(['00301493995', 'X', 'n/a'], $columns)['errors']);
+        $this->assertSame(
+            ['Not a mobile number — saved, but SMS cannot be sent to it'],
+            $this->parser()->normalizeContactRow(['00301493995', 'X', '(036) 320-1234'], $columns)['warnings'],
+        );
+    }
+
     public function test_normalizes_a_masterlist_row_keeping_leading_zeros(): void
     {
         [, $columns] = $this->parser()->detectHeader([self::MASTERLIST_HEADER]);
@@ -177,7 +218,8 @@ class WorkbookParserTest extends TestCase
             'D' => ['D', 'D'],
             'gold word' => ['Gold', 'G'],
             'lowercase s' => ['s', 'S'],
-            'regular' => ['R', 'R'],
+            'regular is no longer a segment' => ['R', null],
+            'regular spelled out' => ['Regular', null],
             'excel error' => ['#N/A', null],
             'unknown' => ['X', null],
         ];

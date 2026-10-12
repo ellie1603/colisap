@@ -59,6 +59,11 @@ class ImportMembers extends Page implements HasTable
 
     public bool $staging = false;
 
+    /**
+     * The step the user chose to look at; null follows the import's own progress.
+     */
+    public ?int $viewStep = null;
+
     public static function canAccess(array $parameters = []): bool
     {
         return Auth::user()?->can('members.import') ?? false;
@@ -86,7 +91,7 @@ class ImportMembers extends Page implements HasTable
             ->schema([
                 Forms\Components\FileUpload::make('file')
                     ->label('Masterlist workbook')
-                    ->helperText('Excel (.xlsx), OpenDocument (.ods) or CSV. One sheet per branch — the sheet name selects the branch. No row limit.')
+                    ->helperText('Excel (.xlsx), OpenDocument (.ods) or CSV. One sheet per branch — the sheet name selects the branch. No row limit. A file with only the CIF Key, name and mobile number updates the members\' mobile numbers and nothing else.')
                     ->disk(MasterlistImportService::DISK)
                     ->directory(MasterlistImportService::DIRECTORY)
                     ->visibility('private')
@@ -103,6 +108,41 @@ class ImportMembers extends Page implements HasTable
                 Forms\Components\Hidden::make('original_name'),
             ])
             ->statePath('upload');
+    }
+
+    /**
+     * How far this import has come: 0 Upload, 1 Map sheets, 2 Preview, 3 Import.
+     */
+    public function reachedStep(): int
+    {
+        return match (true) {
+            $this->batch() === null => 0,
+            $this->staging || $this->batch()->status === 'analyzed' => 1,
+            in_array($this->batch()->status, ['staged', 'awaiting_approval'], true) => 2,
+            default => 3,
+        };
+    }
+
+    /**
+     * Look at a step already reached (nothing is changed by looking); the last one follows the import again.
+     */
+    public function goToStep(int $step): void
+    {
+        $reached = $this->reachedStep();
+
+        if ($this->staging || $step < 0 || $step > $reached) {
+            return;
+        }
+
+        $this->viewStep = $step === $reached ? null : $step;
+    }
+
+    /**
+     * Branch staff send their import to the Administrator; only an approver's import is written straight away.
+     */
+    public function canApproveImports(): bool
+    {
+        return Auth::user()?->can('imports.approve') ?? false;
     }
 
     public function batch(): ?ImportBatch
@@ -135,9 +175,10 @@ class ImportMembers extends Page implements HasTable
         }
 
         $this->batchId = $batch->id;
+        $this->viewStep = null;
         $this->loadMapping();
 
-        if ($this->service()->includedSheetPositions($batch) === []) {
+        if (collect($this->mapping)->where('include', true)->isEmpty()) {
             Notification::make()->title('Check the sheet mapping')
                 ->body('No sheet could be matched automatically to a branch with an Acct. Number column. Map them below.')
                 ->warning()->send();
@@ -145,18 +186,41 @@ class ImportMembers extends Page implements HasTable
     }
 
     /**
-     * Staff limited to one branch import only that branch's sheet: sheets matched to other branches start unticked.
+     * Sheets offered on the mapping screen. Staff limited to one branch only get the sheet named after their
+     * branch (and mobile-number lists); other branches' sheets are neither shown nor importable. When no sheet
+     * carries their branch's name, the sheets that match no branch at all are offered so the file can still be mapped.
+     *
+     * @return list<int>
      */
-    private function loadMapping(): void
+    private function mappableSheetPositions(?ImportBatch $batch): array
     {
+        $sheets = $batch?->sheets ?? [];
         $ownBranch = Branch::restrictedId();
 
-        $this->mapping = collect($this->batch()?->sheets ?? [])->map(function (array $sheet) use ($ownBranch) {
-            $isAllowed = $ownBranch === null || (int) ($sheet['branch_id'] ?? 0) === $ownBranch;
+        if ($ownBranch === null) {
+            return array_keys($sheets);
+        }
+
+        $named = array_map(fn (array $sheet) => Branch::resolve($sheet['name'])?->id, $sheets);
+        $hasOwnSheet = in_array($ownBranch, $named, true);
+
+        return array_keys(array_filter($sheets, fn (array $sheet, int $position) => $named[$position] === $ownBranch
+            || WorkbookParser::isContactList($sheet['columns'] ?? [])
+            || (! $hasOwnSheet && $named[$position] === null), ARRAY_FILTER_USE_BOTH));
+    }
+
+    private function loadMapping(): void
+    {
+        $batch = $this->batch();
+        $ownBranch = Branch::restrictedId();
+        $mappable = $this->mappableSheetPositions($batch);
+
+        $this->mapping = collect($batch?->sheets ?? [])->map(function (array $sheet, int $position) use ($ownBranch, $mappable) {
+            $isMappable = in_array($position, $mappable, true);
 
             return [
-                'include' => $isAllowed && ($sheet['include'] ?? false),
-                'branch_id' => $isAllowed ? $sheet['branch_id'] ?? null : null,
+                'include' => $isMappable && ($sheet['include'] ?? false),
+                'branch_id' => $isMappable ? $ownBranch ?? $sheet['branch_id'] ?? null : null,
                 'columns' => collect(WorkbookParser::FIELDS)->mapWithKeys(fn ($label, $field) => [$field => $sheet['columns'][$field] ?? null])->all(),
             ];
         })->all();
@@ -169,6 +233,7 @@ class ImportMembers extends Page implements HasTable
         $batch = $this->batch();
         $branches = Branch::pluck('name', 'id');
         $ownBranch = Branch::restrictedId();
+        $mappable = $this->mappableSheetPositions($batch);
         $sheets = $batch->sheets;
         $problems = [];
 
@@ -180,12 +245,16 @@ class ImportMembers extends Page implements HasTable
             }
 
             $columns = array_filter($map['columns'], fn ($column) => $column !== null && $column !== '');
-            $include = (bool) $map['include'];
+            $include = (bool) $map['include'] && in_array($position, $mappable, true);
+            $isContactList = WorkbookParser::isContactList($columns);
 
             if ($include && ! $sheet['header_row']) {
                 $problems[] = "{$sheet['name']}: no header row was found";
             } elseif ($include && ! isset($columns['account_no'])) {
                 $problems[] = "{$sheet['name']}: map the Acct. Number column";
+            } elseif ($isContactList) {
+                // A mobile-number list matches members by Acct. Number alone: it needs no name and no branch.
+                $map['branch_id'] = $ownBranch;
             } elseif ($include && ! isset($columns['full_name']) && ! (isset($columns['last_name']) && isset($columns['first_name']))) {
                 $problems[] = "{$sheet['name']}: map the Account Name column";
             } elseif ($include && ! $map['branch_id']) {
@@ -196,7 +265,7 @@ class ImportMembers extends Page implements HasTable
 
             $sheets[$position]['include'] = $include;
             $sheets[$position]['branch_id'] = $map['branch_id'] ? (int) $map['branch_id'] : null;
-            $sheets[$position]['branch_name'] = $map['branch_id'] ? $branches[(int) $map['branch_id']] ?? null : null;
+            $sheets[$position]['branch_name'] = $map['branch_id'] && ! $isContactList ? $branches[(int) $map['branch_id']] ?? null : null;
             $sheets[$position]['columns'] = array_map('intval', $columns);
         }
 
@@ -207,6 +276,7 @@ class ImportMembers extends Page implements HasTable
         }
 
         $batch->update(['sheets' => $sheets]);
+        $this->viewStep = null;
         $this->service()->resetStaging($batch);
 
         if ($this->service()->includedSheetPositions($batch->refresh()) === []) {
@@ -250,8 +320,24 @@ class ImportMembers extends Page implements HasTable
         $this->resetTable();
     }
 
+    /**
+     * Stop checking the sheets and return to the mapping screen; the rows read so far are discarded.
+     * The sheet being read when Cancel is clicked finishes first, so it can take a moment on a large sheet.
+     */
+    public function cancelValidation(): void
+    {
+        $this->staging = false;
+
+        if ($batch = $this->batch()) {
+            $this->service()->resetStaging($batch);
+        }
+
+        $this->loadMapping();
+    }
+
     public function backToMapping(): void
     {
+        $this->viewStep = null;
         $this->service()->resetStaging($this->batch());
         $this->loadMapping();
     }
@@ -262,13 +348,58 @@ class ImportMembers extends Page implements HasTable
     {
         $batch = $this->batch();
 
+        if ($problem = $this->service()->duplicateProblem($batch)) {
+            Notification::make()->title('Import blocked — the file has duplicates')->body($problem)->danger()->persistent()->send();
+
+            return;
+        }
+
         if ($batch->importableCount() === 0) {
             Notification::make()->title('Nothing to import')->body('There are no new or updated members in this file.')->warning()->send();
 
             return;
         }
 
+        $this->viewStep = null;
+
+        if (! $this->canApproveImports()) {
+            $this->service()->submitForApproval($batch);
+
+            Notification::make()->title('Sent to the Administrator for approval')
+                ->body('Nothing has been added to the system yet. The members are written once the Administrator approves this import.')
+                ->success()->send();
+
+            return;
+        }
+
         $batch->update(['status' => 'importing']);
+    }
+
+    /**
+     * The Administrator approves a branch's import from the preview; the import then runs on this page.
+     */
+    public function approveImport(): void
+    {
+        abort_unless($this->canApproveImports(), 403);
+
+        try {
+            $this->service()->approve($this->batch());
+        } catch (\RuntimeException $exception) {
+            Notification::make()->title('This import cannot be approved')->body($exception->getMessage())->danger()->persistent()->send();
+
+            return;
+        }
+
+        $this->viewStep = null;
+    }
+
+    /**
+     * Narrow the preview to the rows that block the import.
+     */
+    public function showDuplicates(): void
+    {
+        $this->tableFilters['action']['value'] = 'duplicate';
+        $this->resetPage();
     }
 
     /**
@@ -304,9 +435,22 @@ class ImportMembers extends Page implements HasTable
         $this->redirect(ImportBatchResource::getUrl('index'));
     }
 
+    /**
+     * Drop a file that failed the check and go straight back to the upload step.
+     */
+    public function uploadCorrectedFile(): void
+    {
+        if ($batch = $this->batch()) {
+            $this->service()->cancel($batch);
+        }
+
+        $this->startOver();
+    }
+
     public function startOver(): void
     {
         $this->batchId = null;
+        $this->viewStep = null;
         $this->mapping = [];
         $this->staging = false;
         $this->uploadForm->fill();
@@ -395,7 +539,9 @@ class ImportMembers extends Page implements HasTable
     protected function getViewData(): array
     {
         return [
-            'batch' => $this->batch(),
+            'batch' => $batch = $this->batch(),
+            'canApprove' => $this->canApproveImports(),
+            'mappableSheets' => $this->mappableSheetPositions($batch),
             'branches' => Branch::options(),
             'ownBranchName' => Branch::whereKey(Branch::restrictedId())->value('name'),
             'fields' => WorkbookParser::FIELDS,

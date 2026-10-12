@@ -31,9 +31,6 @@ class BranchResource extends Resource
                     ->maxLength(100)
                     ->unique(ignoreRecord: true),
                 Forms\Components\TextInput::make('code')->maxLength(20)->unique(ignoreRecord: true),
-                Forms\Components\TagsInput::make('aliases')
-                    ->helperText('Other spellings used in masterlist sheet names (e.g. "Guinsangan", "P. Roxas").')
-                    ->columnSpanFull(),
                 Forms\Components\TextInput::make('sort_order')->numeric()->default(0),
                 Forms\Components\Toggle::make('is_active')->default(true),
             ]);
@@ -47,7 +44,6 @@ class BranchResource extends Resource
                 Tables\Columns\TextColumn::make('sort_order')->label('#')->sortable(),
                 Tables\Columns\TextColumn::make('name')->searchable(),
                 Tables\Columns\TextColumn::make('code')->visibleFrom('sm'),
-                Tables\Columns\TextColumn::make('aliases')->badge()->visibleFrom('md'),
                 Tables\Columns\TextColumn::make('members_count')->label('Members')->numeric(),
                 Tables\Columns\IconColumn::make('is_active')->label('Active')->boolean(),
             ])
@@ -62,7 +58,6 @@ class BranchResource extends Resource
     {
         return [
             'index' => Pages\ListBranches::route('/'),
-            'create' => Pages\CreateBranch::route('/create'),
             'edit' => Pages\EditBranch::route('/{record}/edit'),
         ];
     }

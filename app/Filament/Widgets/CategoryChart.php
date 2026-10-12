@@ -6,7 +6,7 @@ class CategoryChart extends ColisapChart
 {
     protected static ?string $heading = 'Benefit category';
 
-    protected static ?string $description = '40K and 60K participants.';
+    protected static ?string $description = 'Participants by benefit category.';
 
     protected int|string|array $columnSpan = 1;
 

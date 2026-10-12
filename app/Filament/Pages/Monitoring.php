@@ -44,6 +44,7 @@ class Monitoring extends Page implements HasTable
     public const TABS = [
         'effectivity' => ['180-day effectivity', 'heroicon-m-clock'],
         'upgrades' => ['90-day upgrades', 'heroicon-m-arrow-trending-up'],
+        'qualified' => ['Can upgrade', 'heroicon-m-sparkles'],
         'replenishment' => ['15-day replenishment', 'heroicon-m-bell-alert'],
         'dormancy' => ['Dormancy', 'heroicon-m-pause-circle'],
     ];
@@ -105,6 +106,7 @@ class Monitoring extends Page implements HasTable
         return [
             'effectivity' => Member::where('status', 'waiting')->count(),
             'upgrades' => $monitoring->upgradeQuery('eligible')->count() + $monitoring->upgradeQuery('pending')->count(),
+            'qualified' => $monitoring->qualifiedForUpgrade()->count(),
             'replenishment' => ReplenishmentNotice::where('status', 'open')->count(),
             'dormancy' => Member::where('status', 'dormant')->count(),
         ];
@@ -114,6 +116,7 @@ class Monitoring extends Page implements HasTable
     {
         return match ($this->tab) {
             'upgrades' => $this->upgradesTable($table),
+            'qualified' => $this->qualifiedTable($table),
             'replenishment' => $this->replenishmentTable($table),
             'dormancy' => $this->dormancyTable($table),
             default => $this->effectivityTable($table),
@@ -188,8 +191,8 @@ class Monitoring extends Page implements HasTable
 
         return $table
             ->query(Member::query()->with('branch')->participating()->where('category', '40000')->whereNotNull('category_upgrade_requested_at'))
-            ->heading('40K → 60K upgrade requests')
-            ->description("Eligible {$wait} days after the request (Policy III.3). Moving to 60K also requires ₱".number_format($min60, 2).' savings.')
+            ->heading(Member::basicCategoryLabel().' → '.Member::higherCategoryLabel().' upgrade requests')
+            ->description("Eligible {$wait} days after the request (Policy III.3). Moving to ".Member::higherCategoryLabel().' also requires ₱'.number_format($min60, 2).' savings.')
             ->columns([
                 ...$this->memberColumns(),
                 Tables\Columns\TextColumn::make('category_upgrade_requested_at')->label('Requested')->date()->sortable(),
@@ -221,7 +224,7 @@ class Monitoring extends Page implements HasTable
             ->actions([
                 $this->smsAction(),
                 Tables\Actions\Action::make('apply')
-                    ->label('Apply 60K')
+                    ->label('Apply '.Member::higherCategoryLabel())
                     ->icon('heroicon-o-check-badge')
                     ->color('success')
                     ->visible(fn (Member $record) => $this->canManage() && $record->upgradeStatus() === 'eligible')
@@ -230,7 +233,7 @@ class Monitoring extends Page implements HasTable
             ])
             ->bulkActions([
                 Tables\Actions\BulkAction::make('applyAll')
-                    ->label('Apply 60K to selected')
+                    ->label('Apply '.Member::higherCategoryLabel().' to selected')
                     ->icon('heroicon-o-check-badge')
                     ->visible(fn () => $this->canManage())
                     ->requiresConfirmation()
@@ -241,14 +244,71 @@ class Monitoring extends Page implements HasTable
             ->recordUrl(fn (Member $record) => MemberResource::getUrl('view', ['record' => $record]));
     }
 
+    /**
+     * Active basic-category members whose savings already meet the higher category's maintaining balance and who have not asked
+     * to upgrade yet — the people worth inviting. Recording a request moves them to the 90-day upgrades view.
+     */
+    private function qualifiedTable(Table $table): Table
+    {
+        $min60 = $this->policy()->decimal('min_balance_60k');
+        $wait = $this->policy()->int('upgrade_wait_days');
+
+        return $table
+            ->query(app(MonitoringService::class)->qualifiedForUpgrade()->with('branch'))
+            ->heading(Member::basicCategoryLabel().' members who can upgrade to '.Member::higherCategoryLabel())
+            ->description('Active '.Member::basicCategoryLabel().' members with at least ₱'.number_format($min60, 2)." in savings and no upgrade request yet. Send them an SMS invitation; once a member applies, record the request and the {$wait}-day waiting period starts (Policy III.3).")
+            ->columns([
+                ...$this->memberColumns(),
+                Tables\Columns\TextColumn::make('contact_number')->label('Mobile number')->placeholder('None on file')->visibleFrom('lg'),
+                Tables\Columns\TextColumn::make('savings_balance')->money('PHP')->sortable()->color('success'),
+                Tables\Columns\TextColumn::make('above_minimum')->label('Above '.Member::higherCategoryLabel().' minimum')
+                    ->state(fn (Member $record) => round((float) $record->savings_balance - $min60, 2))
+                    ->money('PHP')->visibleFrom('md'),
+            ])
+            ->filters([
+                Tables\Filters\TernaryFilter::make('has_mobile')->label('Mobile number')
+                    ->placeholder('All')
+                    ->trueLabel('Has a mobile number')
+                    ->falseLabel('No mobile number')
+                    ->queries(
+                        true: fn (Builder $query) => $query->whereNotNull('contact_number')->where('contact_number', '<>', ''),
+                        false: fn (Builder $query) => $query->where(fn (Builder $q) => $q->whereNull('contact_number')->orWhere('contact_number', '')),
+                    ),
+                $this->branchFilter(),
+            ])
+            ->headerActions([$this->smsToAllAction()])
+            ->actions([
+                $this->smsAction(),
+                Tables\Actions\Action::make('requestUpgrade')
+                    ->label('Record request')
+                    ->icon('heroicon-o-arrow-trending-up')
+                    ->color('success')
+                    ->visible(fn () => $this->canManage())
+                    ->requiresConfirmation()
+                    ->modalHeading(fn (Member $record) => 'Record a '.Member::higherCategoryLabel()." upgrade request for {$record->account_name}?")
+                    ->modalDescription("Use this once the member has applied to upgrade. They move to the 90-day upgrades view and become eligible after {$wait} days.")
+                    ->modalSubmitActionLabel('Record request')
+                    ->action(function (Member $record) {
+                        $record->requestCategoryUpgrade();
+
+                        Notification::make()->title('Upgrade request recorded')
+                            ->body('Eligible on '.$record->upgradeEligibleDate()->toFormattedDateString().'.')
+                            ->success()->send();
+                    }),
+            ])
+            ->bulkActions([$this->smsBulkAction()])
+            ->defaultSort('savings_balance', 'desc')
+            ->recordUrl(fn (Member $record) => MemberResource::getUrl('view', ['record' => $record]));
+    }
+
     private function applyUpgrades(Collection $members): void
     {
         $applied = $members->filter(fn (Member $member) => $member->applyCategoryUpgradeIfEligible())->count();
         $skipped = $members->count() - $applied;
 
         Notification::make()
-            ->title("{$applied} member(s) moved to 60K")
-            ->body($skipped ? "{$skipped} skipped — not yet eligible or savings below the 60K maintaining balance." : null)
+            ->title("{$applied} member(s) moved to ".Member::higherCategoryLabel())
+            ->body($skipped ? "{$skipped} skipped — not yet eligible or savings below the ".Member::higherCategoryLabel().' maintaining balance.' : null)
             ->success()->send();
     }
 
@@ -368,7 +428,7 @@ class Monitoring extends Page implements HasTable
         return $table
             ->query(ReplenishmentNotice::query()->with('member.branch'))
             ->heading('Replenishment notices')
-            ->description('Savings below the maintaining balance must be replenished within '.$this->policy()->int('replenishment_days').' days of notice (Policy II.4). Expired notices terminate 40K participation or downgrade 60K to 40K (Policy VII).')
+            ->description('Savings below the maintaining balance must be replenished within '.$this->policy()->int('replenishment_days').' days of notice (Policy II.4). Expired notices terminate '.Member::basicCategoryLabel().' participation or downgrade '.Member::higherCategoryLabel().' to '.Member::basicCategoryLabel().' (Policy VII).')
             ->columns([
                 Tables\Columns\TextColumn::make('member.account_no')->label('Acct. Number')->fontFamily('mono')->searchable(),
                 Tables\Columns\TextColumn::make('member.account_name')->label('Account Name')->wrap()

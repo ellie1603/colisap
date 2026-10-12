@@ -12,6 +12,7 @@ use App\Models\SavingsTransaction;
 use App\Services\Masterlist\MasterlistImportService;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Tests\Concerns\CreatesMasterlistWorkbooks;
 use Tests\TestCase;
 
@@ -117,7 +118,119 @@ class MasterlistImportServiceTest extends TestCase
         $this->assertSame('import_adjustment', $existing->savingsTransactions()->sole()->type);
     }
 
-    public function test_duplicates_and_invalid_rows_are_skipped_and_reported(): void
+    public function test_an_account_number_that_lost_its_leading_zeros_updates_the_existing_member_instead_of_adding_a_duplicate(): void
+    {
+        $existing = Member::factory()->create(['account_no' => '00101959720', 'savings_balance' => 100]);
+
+        $batch = $this->import($this->stage([
+            'Sibalom' => $this->sheet(['', 101959720, 'DELA CRUZ, JUAN A.', 'S', 'COLISAP40000', '6/3/1998', '', 1, 'qualified', 900, '']),
+        ]));
+
+        $this->assertSame([0, 1, 0, 1], [$batch->new_rows, $batch->update_rows, $batch->created_count, $batch->updated_count]);
+        $this->assertSame(['00101959720'], Member::withTrashed()->pluck('account_no')->all());
+        $this->assertSame('900.00', $existing->refresh()->savings_balance);
+    }
+
+    public function test_one_account_written_with_and_without_leading_zeros_in_the_same_file_counts_as_a_duplicate(): void
+    {
+        $batch = $this->stage([
+            'Barbaza' => $this->sheet(['', '00101959799', 'DELA CRUZ, JUAN A.', 'S', 'COLISAP40000', '6/3/1998', '', 1, 'qualified', 900, '']),
+            'Sibalom' => $this->sheet(['', 101959799, 'DELA CRUZ, JUAN A.', 'S', 'COLISAP40000', '6/3/1998', '', 1, 'qualified', 900, '']),
+        ]);
+
+        $this->assertSame([1, 1], [$batch->new_rows, $batch->duplicate_rows]);
+        $this->assertSame(
+            ['Duplicate Acct. Number — already listed in Barbaza row 5'],
+            $batch->rows()->where('action', 'duplicate')->sole()->errors,
+        );
+    }
+
+    public function test_a_file_with_duplicates_is_not_imported_until_the_duplicate_rows_are_removed(): void
+    {
+        $batch = $this->stage([
+            'Barbaza' => $this->sheet(
+                ['', '00101000001', 'ONE, FIRST', 'R', 'COLISAP40000', '1/1/2020', '', '', '', 1000, ''],
+                ['', '00101000002', 'TWO, SECOND', 'R', 'COLISAP40000', '1/1/2020', '', '', '', 1000, ''],
+            ),
+            'Culasi' => $this->sheet(['', '00101000001', 'ONE, FIRST', 'R', 'COLISAP40000', '1/1/2020', '', '', '', 1000, '']),
+        ]);
+        $service = app(MasterlistImportService::class);
+
+        try {
+            $service->importChunk($batch);
+            $this->fail('A file with duplicates must not be imported.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('lists 1 Acct. Number(s) more than once, so nothing was imported', $exception->getMessage());
+        }
+
+        $this->assertSame(['staged', 0], [$batch->refresh()->status, Member::count()]);
+
+        $batch->rows()->where('action', 'duplicate')->delete();
+        $batch = $this->import($service->refreshCounts($batch));
+
+        $this->assertSame('completed', $batch->status);
+        $this->assertSame(['00101000001', '00101000002'], Member::orderBy('account_no')->pluck('account_no')->all());
+    }
+
+    public function test_a_new_account_with_the_name_of_a_member_already_in_the_branch_is_flagged_as_a_possible_double_entry(): void
+    {
+        Member::factory()->create([
+            'account_no' => '00101000001', 'account_name' => 'DELA CRUZ, JUAN A.', 'branch_id' => Branch::where('name', 'Barbaza')->value('id'),
+        ]);
+
+        $batch = $this->stage([
+            'Barbaza' => $this->sheet(
+                ['', '00101000002', 'Dela Cruz,  Juan A.', 'S', 'COLISAP40000', '6/3/1998', '', 1, 'qualified', 900, ''],
+                ['', '00101000003', 'SANTOS, MARIA B.', 'S', 'COLISAP40000', '6/3/1998', '', 1, 'qualified', 900, ''],
+            ),
+        ]);
+
+        $this->assertSame(2, $batch->new_rows);
+        $this->assertSame(
+            ['Possible double entry: a member with the same name is already in this branch under Acct. Number 00101000001'],
+            $batch->rows()->where('account_no', '00101000002')->sole()->warnings,
+        );
+        $this->assertSame([], $batch->rows()->where('account_no', '00101000003')->sole()->warnings);
+    }
+
+    public function test_a_mobile_number_list_only_updates_the_contact_number_of_existing_members(): void
+    {
+        $kalibo = Branch::where('name', 'Kalibo')->value('id');
+        $juan = Member::factory()->category60000()->segment('G')->create([
+            'account_no' => '00301493995', 'account_name' => 'DELA CRUZ, JUAN A.', 'last_name' => 'Dela Cruz',
+            'branch_id' => $kalibo, 'savings_balance' => 5000, 'contact_number' => null,
+        ]);
+        $maria = Member::factory()->create(['account_no' => '00301493996', 'contact_number' => '09180000000']);
+
+        $batch = $this->stage([
+            'Sheet1' => [
+                ['CIF Key', 'Name', 'Number'],
+                [301493995, 'A DIFFERENT SPELLING', 9171234567],
+                ['00301493996', 'SANTOS, MARIA', ''],
+                ['00999999999', 'NOT A MEMBER', '09181234567'],
+            ],
+        ]);
+
+        $this->assertSame([0, 1, 2], [$batch->new_rows, $batch->update_rows, $batch->invalid_rows]);
+        $this->assertSame(
+            ['00301493996' => ['No mobile number in this row'], '00999999999' => ['No member has this CIF Key — mobile number not imported']],
+            $batch->rows()->where('action', 'invalid')->orderBy('account_no')->get()->mapWithKeys(fn (ImportRow $row) => [$row->account_no => $row->errors])->all(),
+        );
+
+        $batch = $this->import($batch);
+        $juan->refresh();
+
+        $this->assertSame(['completed', 0, 1], [$batch->status, $batch->created_count, $batch->updated_count]);
+        $this->assertSame('09171234567', $juan->contact_number);
+        $this->assertSame(
+            ['DELA CRUZ, JUAN A.', 'Dela Cruz', $kalibo, '60000', 'G', 'active', '5000.00', null],
+            [$juan->account_name, $juan->last_name, $juan->branch_id, $juan->category, $juan->segment, $juan->status, $juan->savings_balance, $juan->import_batch_id],
+        );
+        $this->assertSame('09180000000', $maria->refresh()->contact_number, 'A blank cell never erases a number already on file.');
+        $this->assertSame([2, 0, 0], [Member::count(), Application::count(), SavingsTransaction::count()]);
+    }
+
+    public function test_duplicates_and_invalid_rows_are_reported(): void
     {
         $batch = $this->stage([
             'Barbaza' => $this->sheet(
@@ -140,10 +253,7 @@ class MasterlistImportServiceTest extends TestCase
         $this->assertStringContainsString('Missing Acct. Number', $csv);
         $this->assertStringContainsString('Invalid category', $csv);
         $this->assertStringContainsString('New member has no approval (NEW) date', $csv);
-        $this->assertStringContainsString('appears more than once', $csv);
-
-        $this->import($batch);
-        $this->assertSame(['00101000001'], Member::pluck('account_no')->all());
+        $this->assertStringContainsString('Duplicate Acct. Number — already listed in Barbaza row 5', $csv);
     }
 
     public function test_side_lists_flag_dormant_and_deceased_accounts(): void

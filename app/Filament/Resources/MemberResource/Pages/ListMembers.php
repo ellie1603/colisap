@@ -44,9 +44,12 @@ class ListMembers extends ListRecords
                         ->inline()
                         ->required(),
                 ])
-                ->action(fn (array $data, ListMembers $livewire) => app(MemberExporter::class)
-                    ->download($livewire->getTableQueryForExport(), $data['format'], $data['layout'] ?? 'organized')),
-            Actions\CreateAction::make()->label('Add member'),
+                ->action(function (array $data, ListMembers $livewire) {
+                    Auth::user()?->recordActivity('members_exported', 'Reports', ['layout' => $data['layout'] ?? 'organized', 'format' => $data['format']]);
+
+                    return app(MemberExporter::class)
+                        ->download($livewire->getTableQueryForExport(), $data['format'], $data['layout'] ?? 'organized');
+                }),
         ];
     }
 

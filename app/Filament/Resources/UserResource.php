@@ -73,6 +73,17 @@ class UserResource extends Resource
                     ->disabled(fn (?User $record) => $record?->is(Auth::user()) ?? false)
                     ->default(true)
                     ->required(),
+                Forms\Components\Toggle::make('in_usage_report')
+                    ->label('Count in the System Usage report')
+                    ->helperText('Turn off for developer or support accounts, so the report sent to management counts only real staff.')
+                    ->visible(fn () => Auth::user()?->isDeveloper() ?? false)
+                    ->default(true),
+                Forms\Components\Toggle::make('is_developer')
+                    ->label('Developer account')
+                    ->helperText('Can open developer-only pages such as System Usage. Only a developer account can change this.')
+                    ->visible(fn () => Auth::user()?->isDeveloper() ?? false)
+                    ->disabled(fn (?User $record) => $record?->is(Auth::user()) ?? false)
+                    ->default(false),
             ]);
     }
 
@@ -95,10 +106,6 @@ class UserResource extends Resource
                     ->visibleFrom('md'),
                 Tables\Columns\IconColumn::make('is_active')
                     ->boolean(),
-                Tables\Columns\TextColumn::make('created_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
@@ -118,7 +125,6 @@ class UserResource extends Resource
     {
         return [
             'index' => Pages\ListUsers::route('/'),
-            'create' => Pages\CreateUser::route('/create'),
             'edit' => Pages\EditUser::route('/{record}/edit'),
         ];
     }

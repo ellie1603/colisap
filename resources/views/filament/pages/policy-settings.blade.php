@@ -1,7 +1,7 @@
 <x-filament-panels::page>
     <div class="colisap-policy-note" role="note">
         <strong>Policy notes.</strong>
-        The written policy mentions ₱50,000 once in the maintaining-balance section while every other section uses ₱60,000 — ₱60,000 is used.
+        Every amount and period below can be changed when the policy changes. The two benefit categories are named after their benefit amounts, so the whole system follows what is set here.
         "Activity" for dormancy is not defined precisely in the policy; choose the source under Dormancy.
     </div>
 

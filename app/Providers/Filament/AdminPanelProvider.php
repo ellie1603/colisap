@@ -3,6 +3,7 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Pages\Auth\Login;
+use Filament\Actions\MountableAction;
 use Filament\FontProviders\LocalFontProvider;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -14,6 +15,7 @@ use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\Support\Enums\MaxWidth;
 use Filament\Support\Facades\FilamentIcon;
+use Filament\Tables\View\TablesRenderHook;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Contracts\View\View;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -59,12 +61,12 @@ class AdminPanelProvider extends PanelProvider
                     950 => '11, 15, 40',
                 ],
             ])
-            ->renderHook(PanelsRenderHook::STYLES_AFTER, fn () => new HtmlString('<link rel="stylesheet" href="'.e(asset('css/colisap.css')).'?v=13">'))
-            ->renderHook(PanelsRenderHook::TOPBAR_START, fn (): View => view('filament.topbar-back'))
+            ->renderHook(PanelsRenderHook::STYLES_AFTER, fn () => new HtmlString('<link rel="stylesheet" href="'.e(asset('css/colisap.css')).'?v=18">'))
             ->renderHook(PanelsRenderHook::GLOBAL_SEARCH_BEFORE, fn (): View => view('filament.topbar-date'))
             ->renderHook(PanelsRenderHook::GLOBAL_SEARCH_AFTER, fn (): View => view('filament.theme-toggle'))
             ->renderHook(PanelsRenderHook::SIDEBAR_FOOTER, fn (): View => view('filament.sidebar-footer'))
-            ->renderHook(PanelsRenderHook::HEAD_END, fn () => new HtmlString('<script src="'.e(asset('js/colisap.js')).'?v=6"></script>'))
+            ->renderHook(TablesRenderHook::TOOLBAR_TOGGLE_COLUMN_TRIGGER_BEFORE, fn (): View => view('filament.table-reset-filters'))
+            ->renderHook(PanelsRenderHook::HEAD_END, fn () => new HtmlString('<script src="'.e(asset('js/colisap.js')).'?v=8"></script>'))
             ->renderHook(PanelsRenderHook::BODY_END, fn (): string|View => session(Login::SPLASH_SESSION_KEY) && auth()->check()
                 ? view('filament.splash', ['userName' => auth()->user()->name])
                 : '')
@@ -98,6 +100,9 @@ class AdminPanelProvider extends PanelProvider
 
     public function boot(): void
     {
+        // Every pop-up form keeps its title and its buttons in view while the fields scroll between them.
+        MountableAction::configureUsing(fn (MountableAction $action) => $action->stickyModalHeader()->stickyModalFooter());
+
         FilamentIcon::register([
             'panels::sidebar.collapse-button' => 'heroicon-o-bars-3-bottom-left',
             'panels::sidebar.collapse-button.rtl' => 'heroicon-o-bars-3-bottom-right',

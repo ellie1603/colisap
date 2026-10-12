@@ -9,9 +9,9 @@ use App\Models\MemberHistory;
 use App\Models\ReplenishmentNotice;
 use App\Services\Colisap\MonitoringService;
 use App\Services\Policy\PolicySettings;
-use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\LazyCollection;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -21,9 +21,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class ReportService
 {
     /**
-     * PDF rendering is memory-heavy; larger reports should be exported to Excel.
+     * Most rows a PDF report carries (about 750 landscape pages); anything longer belongs in Excel.
      */
-    public const PDF_ROW_LIMIT = 3000;
+    public const PDF_ROW_LIMIT = 30000;
 
     /**
      * @var array<string, array{label: string, group: string, date: ?string}>
@@ -36,12 +36,11 @@ class ReportService
         'status_deceased' => ['label' => 'Deceased members', 'group' => 'Members by status', 'date' => 'Date of death'],
         'status_terminated' => ['label' => 'Terminated members', 'group' => 'Members by status', 'date' => 'Termination date'],
         'status_withdrawn' => ['label' => 'Withdrawn members', 'group' => 'Members by status', 'date' => 'Withdrawal date'],
-        'category_40000' => ['label' => '40K members', 'group' => 'Members by category', 'date' => 'Approval date'],
-        'category_60000' => ['label' => '60K members', 'group' => 'Members by category', 'date' => 'Approval date'],
+        'category_40000' => ['label' => 'Basic category members', 'group' => 'Members by category', 'date' => 'Approval date'],
+        'category_60000' => ['label' => 'Higher category members', 'group' => 'Members by category', 'date' => 'Approval date'],
         'segment_D' => ['label' => 'Diamond members', 'group' => 'Members by segment', 'date' => 'Approval date'],
         'segment_G' => ['label' => 'Gold members', 'group' => 'Members by segment', 'date' => 'Approval date'],
         'segment_S' => ['label' => 'Silver members', 'group' => 'Members by segment', 'date' => 'Approval date'],
-        'segment_R' => ['label' => 'Regular members', 'group' => 'Members by segment', 'date' => 'Approval date'],
         'branch_summary' => ['label' => 'Branch summary', 'group' => 'Monitoring', 'date' => null],
         'effectivity' => ['label' => '180-day effectivity', 'group' => 'Monitoring', 'date' => 'Effectivity date'],
         'upgrades' => ['label' => '90-day upgrade eligibility', 'group' => 'Monitoring', 'date' => 'Upgrade request date'],
@@ -56,12 +55,24 @@ class ReportService
     ) {}
 
     /**
+     * A report's name. The two category reports are named after the benefit amounts in Policy Settings.
+     */
+    public static function label(string $report): string
+    {
+        return match ($report) {
+            'category_40000' => Member::basicCategoryLabel().' members',
+            'category_60000' => Member::higherCategoryLabel().' members',
+            default => (self::REPORTS[$report] ?? self::REPORTS['masterlist'])['label'],
+        };
+    }
+
+    /**
      * @return array<string, array<string, string>> grouped options for a select
      */
     public static function options(): array
     {
         return collect(self::REPORTS)->groupBy('group', preserveKeys: true)
-            ->map(fn ($reports) => $reports->map(fn ($report) => $report['label'])->all())
+            ->map(fn ($reports) => $reports->map(fn ($report, $key) => self::label($key))->all())
             ->all();
     }
 
@@ -87,7 +98,7 @@ class ReportService
             default => $this->memberList($report, $filters),
         };
 
-        return [...$result, 'title' => $definition['label'], 'filters' => $this->describeFilters($filters, $definition['date'])];
+        return [...$result, 'title' => self::label($report), 'filters' => $this->describeFilters($filters, $definition['date'])];
     }
 
     public function download(string $report, string $format, array $filters = []): StreamedResponse
@@ -96,20 +107,24 @@ class ReportService
         $baseName = str($built['title'])->slug().'-'.now()->format('Ymd-His');
 
         if ($format === 'pdf') {
-            $rows = collect($built['rows'])->take(self::PDF_ROW_LIMIT)->all();
+            $isTruncated = $built['count'] > self::PDF_ROW_LIMIT;
 
-            $pdf = Pdf::loadView('reports.generic', [
-                'title' => $built['title'],
-                'filters' => $built['filters'],
-                'headings' => $built['headings'],
-                'rows' => $rows,
-                'total' => $built['count'],
-                'truncated' => $built['count'] > self::PDF_ROW_LIMIT,
-                'generatedAt' => now(),
-                'logo' => $this->logoDataUri(),
-            ])->setPaper('a4', count($built['headings']) > 6 ? 'landscape' : 'portrait');
+            // Built before the download starts, so a failure is reported as an error instead of a broken file.
+            $pdf = app(PdfTableWriter::class)->render(
+                $built['title'],
+                [
+                    $isTruncated
+                        ? 'First '.number_format(self::PDF_ROW_LIMIT).' of '.number_format($built['count']).' records — export to Excel for the complete list'
+                        : number_format($built['count']).' record(s)',
+                    ...$built['filters'],
+                    'Generated '.now()->format('M j, Y g:i A'),
+                ],
+                $built['headings'],
+                LazyCollection::make(fn () => yield from $built['rows'])->take(self::PDF_ROW_LIMIT),
+                public_path('images/logo-192.png'),
+            );
 
-            return response()->streamDownload(fn () => print ($pdf->output()), "{$baseName}.pdf", ['Content-Type' => 'application/pdf']);
+            return response()->streamDownload(fn () => print ($pdf), "{$baseName}.pdf", ['Content-Type' => 'application/pdf']);
         }
 
         return $this->writer->download($baseName, $format, $built['headings'], $built['rows'], $built['text_columns'], [
@@ -293,7 +308,7 @@ class ReportService
         $min60 = $this->policy->decimal('min_balance_60k');
 
         return [
-            'headings' => ['Acct. Number', 'Account Name', 'Branch', 'Request Date', 'Eligible Date', 'Upgrade Status', 'Savings Balance', 'Meets 60K Balance'],
+            'headings' => ['Acct. Number', 'Account Name', 'Branch', 'Request Date', 'Eligible Date', 'Upgrade Status', 'Savings Balance', 'Meets '.Member::higherCategoryLabel().' Balance'],
             'rows' => (function () use ($query, $min60) {
                 foreach ($query->lazy(500) as $member) {
                     yield [

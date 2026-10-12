@@ -13,12 +13,12 @@ final class PolicyDefaults
      */
     public const SETTINGS = [
         // Benefits (IV)
-        'benefit_40k' => ['group' => 'Benefits', 'label' => '40K category benefit (₱)', 'type' => 'decimal', 'value' => 40000],
-        'benefit_60k' => ['group' => 'Benefits', 'label' => '60K category benefit (₱)', 'type' => 'decimal', 'value' => 60000, 'help' => 'The policy mentions ₱50,000 once in the maintaining-balance section; ₱60,000 is used everywhere else.'],
+        'benefit_40k' => ['group' => 'Benefits', 'label' => 'Basic category benefit (₱)', 'type' => 'decimal', 'value' => 40000, 'help' => 'The category is named after this amount everywhere in the system (₱40,000 shows as 40K).'],
+        'benefit_60k' => ['group' => 'Benefits', 'label' => 'Higher category benefit (₱)', 'type' => 'decimal', 'value' => 60000, 'help' => 'The category members upgrade to. Also named after this amount (₱60,000 shows as 60K).'],
 
         // Maintaining balance (II.3, II.4, VII)
-        'min_balance_40k' => ['group' => 'Savings', 'label' => '40K minimum maintaining balance (₱)', 'type' => 'decimal', 'value' => 500],
-        'min_balance_60k' => ['group' => 'Savings', 'label' => '60K minimum maintaining balance (₱)', 'type' => 'decimal', 'value' => 2000],
+        'min_balance_40k' => ['group' => 'Savings', 'label' => 'Basic category minimum maintaining balance (₱)', 'type' => 'decimal', 'value' => 500],
+        'min_balance_60k' => ['group' => 'Savings', 'label' => 'Higher category minimum maintaining balance (₱)', 'type' => 'decimal', 'value' => 2000],
         'replenishment_days' => ['group' => 'Savings', 'label' => 'Replenishment period (days after notice)', 'type' => 'int', 'value' => 15],
         'replenishment_warning_days' => ['group' => 'Savings', 'label' => 'Warn when replenishment deadline is within (days)', 'type' => 'int', 'value' => 5],
         'auto_issue_replenishment_notices' => ['group' => 'Savings', 'label' => 'Automatically issue replenishment notices when balance falls below minimum', 'type' => 'bool', 'value' => true],
@@ -26,8 +26,8 @@ final class PolicyDefaults
 
         // Effectivity & upgrades (III)
         'effectivity_days' => ['group' => 'Effectivity', 'label' => 'Effectivity / waiting period (days after approval)', 'type' => 'int', 'value' => 180],
-        'upgrade_wait_days' => ['group' => 'Effectivity', 'label' => '40K → 60K upgrade waiting period (days)', 'type' => 'int', 'value' => 90],
-        'auto_apply_upgrades' => ['group' => 'Effectivity', 'label' => 'Automatically move members to 60K when the upgrade waiting period ends', 'type' => 'bool', 'value' => false, 'help' => 'When off, eligible upgrades are listed under Monitoring for an Admin to apply.'],
+        'upgrade_wait_days' => ['group' => 'Effectivity', 'label' => 'Upgrade waiting period (days)', 'type' => 'int', 'value' => 90],
+        'auto_apply_upgrades' => ['group' => 'Effectivity', 'label' => 'Automatically move members to the higher category when the upgrade waiting period ends', 'type' => 'bool', 'value' => false, 'help' => 'When off, eligible upgrades are listed under Monitoring for an Admin to apply.'],
         'max_entry_age_months' => ['group' => 'Effectivity', 'label' => 'Maximum applicant age (months)', 'type' => 'int', 'value' => 714, 'help' => '59 years and 6 months = 714 months.'],
 
         // Dormancy & termination (VII)

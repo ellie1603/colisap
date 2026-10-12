@@ -14,6 +14,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -90,6 +91,11 @@ class MasterlistImportService
         $sheet = $sheets[$position];
         $columns = array_map('intval', array_filter($sheet['columns'] ?? [], fn ($column) => $column !== null && $column !== ''));
         $allowNegative = $this->policy->bool('allow_negative_balance');
+        $isContactList = WorkbookParser::isContactList($columns);
+        $benefitAmounts = [
+            Member::BASIC_CATEGORY => $this->policy->benefitFor(Member::BASIC_CATEGORY),
+            Member::HIGHER_CATEGORY => $this->policy->benefitFor(Member::HIGHER_CATEGORY),
+        ];
         $path = Storage::disk(self::DISK)->path($batch->file_path);
 
         $buffer = [];
@@ -100,7 +106,7 @@ class MasterlistImportService
         $now = now();
 
         foreach ($this->parser->rows($path, $sheet['index'], (int) $sheet['header_row']) as $rowNumber => $cells) {
-            foreach ($this->parser->sideListEntries($cells, array_values($columns)) as $entry) {
+            foreach ($isContactList ? [] : $this->parser->sideListEntries($cells, array_values($columns)) as $entry) {
                 $references[] = $this->stagedRow($batch, $sheet, $rowNumber, $now, [
                     'account_no' => $entry['account_no'],
                     'account_name' => $entry['account_name'],
@@ -110,14 +116,16 @@ class MasterlistImportService
                 ]);
             }
 
-            $normalized = $this->parser->normalizeRow($cells, $columns, $allowNegative);
+            $normalized = $isContactList
+                ? $this->parser->normalizeContactRow($cells, $columns)
+                : $this->parser->normalizeRow($cells, $columns, $allowNegative, $benefitAmounts);
 
             if ($normalized['blank']) {
                 continue;
             }
 
-            if (! isset($normalized['raw']['category']) && ($normalized['data']['category'] ?? null) === null) {
-                $normalized['warnings'][] = 'No category — new members default to 40K';
+            if (! $isContactList && ! isset($normalized['raw']['category']) && ($normalized['data']['category'] ?? null) === null) {
+                $normalized['warnings'][] = 'No category — new members default to '.Member::basicCategoryLabel();
             }
 
             $row = $this->stagedRow($batch, $sheet, $rowNumber, $now, [
@@ -133,7 +141,7 @@ class MasterlistImportService
 
             $staged++;
 
-            if ($normalized['numeric_account'] && $normalized['data']['account_no'] !== null) {
+            if ($normalized['numeric_account'] && $normalized['data']['account_no'] !== null && ! $isContactList) {
                 $numericAccountRows[] = $row;
             } else {
                 if ($normalized['data']['account_no'] !== null) {
@@ -198,6 +206,8 @@ class MasterlistImportService
             }
         }
 
+        $buffer = $this->alignWithKnownAccounts($buffer);
+
         foreach (array_chunk($buffer, self::INSERT_CHUNK) as $chunk) {
             ImportRow::insert($chunk);
         }
@@ -207,6 +217,94 @@ class MasterlistImportService
         $batch->update(['sheets' => $sheets]);
 
         return $staged;
+    }
+
+    /**
+     * Acct. Numbers are the same account when they differ only by leading zeros, dashes or letter case
+     * (Excel turns 00301493995 into 301493995 when the cell is stored as a number).
+     */
+    private function accountKey(?string $accountNo): string
+    {
+        return ltrim(preg_replace('/[^0-9A-Z]/', '', strtoupper((string) $accountNo)) ?? '', '0');
+    }
+
+    /**
+     * Guard against adding a member twice: a row whose Acct. Number is an existing member's number written
+     * differently (leading zeros lost, dashes added) is pointed at that member, so it updates instead of creating.
+     *
+     * @param  list<array<string, mixed>>  $rows
+     * @return list<array<string, mixed>>
+     */
+    private function alignWithKnownAccounts(array $rows): array
+    {
+        $known = Branch::withoutRestriction(fn () => Member::withTrashed()->pluck('account_no')->all());
+        $exact = array_fill_keys($known, true);
+        $byKey = [];
+
+        foreach ($known as $accountNo) {
+            $key = $this->accountKey((string) $accountNo);
+            $byKey[$key] = array_key_exists($key, $byKey) ? null : (string) $accountNo;
+        }
+
+        foreach ($rows as $index => $row) {
+            $accountNo = $row['account_no'];
+            $match = $accountNo === null || $row['action'] === 'reference' || isset($exact[$accountNo])
+                ? null
+                : ($byKey[$this->accountKey($accountNo)] ?? null);
+
+            if ($match === null) {
+                continue;
+            }
+
+            $data = json_decode($row['data'], true);
+            $rows[$index]['account_no'] = $match;
+            $rows[$index]['data'] = json_encode([...$data, 'account_no' => $match]);
+
+            if (($data['mode'] ?? null) !== 'contacts') {
+                $rows[$index]['warnings'] = json_encode([
+                    ...(json_decode($row['warnings'], true) ?? []),
+                    "Acct. Number \"{$accountNo}\" matched to existing member {$match} — updated, not added again",
+                ]);
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * A new Acct. Number whose name is already in the same branch may be one person entered twice. Only the
+     * cooperative can tell namesakes apart, so the row is still imported but flagged for checking.
+     */
+    private function flagPossibleDoubleEntries(ImportBatch $batch): void
+    {
+        $nameKey = fn (?string $name): string => preg_replace('/[^A-Z]/', '', mb_strtoupper((string) $name)) ?? '';
+        $existing = [];
+
+        foreach (DB::table('members')->whereNull('deleted_at')->select(['branch_id', 'account_no', 'account_name'])->cursor() as $member) {
+            $existing[$member->branch_id.'|'.$nameKey($member->account_name)] ??= $member->account_no;
+        }
+
+        if ($existing === []) {
+            return;
+        }
+
+        ImportRow::query()
+            ->where('import_batch_id', $batch->id)
+            ->where('action', 'new')
+            ->select(['id', 'branch_id', 'account_name', 'warnings'])
+            ->chunkById(1000, function ($rows) use ($existing, $nameKey) {
+                foreach ($rows as $row) {
+                    $name = $nameKey($row->account_name);
+                    $twin = $name === '' ? null : ($existing[$row->branch_id.'|'.$name] ?? null);
+
+                    if ($twin !== null) {
+                        $row->update(['warnings' => [
+                            ...($row->warnings ?? []),
+                            "Possible double entry: a member with the same name is already in this branch under Acct. Number {$twin}",
+                        ]]);
+                    }
+                }
+            });
     }
 
     /**
@@ -243,22 +341,30 @@ class MasterlistImportService
 
         $pending = fn () => ImportRow::query()->where('import_batch_id', $batch->id)->where('action', 'pending');
 
-        // Duplicate Acct. Numbers within the file: the first occurrence wins.
-        $duplicateIds = DB::table('import_rows as r')
-            ->join(DB::raw('(select account_no, min(id) as first_id from import_rows where import_batch_id = '.(int) $batch->id." and action = 'pending' group by account_no) as g"), function ($join) {
-                $join->on('g.account_no', '=', 'r.account_no')->whereColumn('r.id', '<>', 'g.first_id');
-            })
-            ->where('r.import_batch_id', $batch->id)
-            ->where('r.action', 'pending')
-            ->pluck('r.id');
+        // The same Acct. Number twice in one file — exactly, or written with and without its leading zeros —
+        // makes the file incorrect: every repeat is marked, and the import is refused until they are resolved.
+        $firstSeen = [];
+        $repeats = [];
 
-        foreach ($duplicateIds->chunk(1000) as $ids) {
-            ImportRow::whereIn('id', $ids->all())->update([
-                'action' => 'duplicate',
-                'status' => 'skipped',
-                'errors' => json_encode(['Acct. Number appears more than once in the file; only the first occurrence is imported']),
-            ]);
+        foreach ($pending()->toBase()->orderBy('id')->select(['id', 'account_no', 'sheet', 'row_number'])->cursor() as $row) {
+            $key = $this->accountKey($row->account_no);
+
+            if (isset($firstSeen[$key])) {
+                $repeats[$firstSeen[$key]][] = $row->id;
+            } else {
+                $firstSeen[$key] = "{$row->sheet} row {$row->row_number}";
+            }
         }
+
+        DB::transaction(function () use ($repeats) {
+            foreach ($repeats as $firstOccurrence => $ids) {
+                ImportRow::whereIn('id', $ids)->update([
+                    'action' => 'duplicate',
+                    'status' => 'skipped',
+                    'errors' => json_encode(["Duplicate Acct. Number — already listed in {$firstOccurrence}"]),
+                ]);
+            }
+        });
 
         // Existing members (including archived) are updated, never duplicated.
         $pending()->whereExists(fn ($query) => $query->selectRaw('1')->from('members')->whereColumn('members.account_no', 'import_rows.account_no'))
@@ -266,6 +372,28 @@ class MasterlistImportService
                 'action' => 'update',
                 'member_id' => DB::raw('(select members.id from members where members.account_no = import_rows.account_no limit 1)'),
             ]);
+
+        // A mobile-number list never adds members, and staff limited to one branch only update that branch's members.
+        $contacts = fn () => ImportRow::query()->where('import_batch_id', $batch->id)->where('data->mode', 'contacts');
+
+        $contacts()->where('action', 'pending')->update([
+            'action' => 'invalid',
+            'status' => 'skipped',
+            'errors' => json_encode(['No member has this CIF Key — mobile number not imported']),
+        ]);
+
+        if ($branchId = Branch::restrictedId()) {
+            $contacts()->where('action', 'update')
+                ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('members')
+                    ->whereColumn('members.id', 'import_rows.member_id')
+                    ->where('members.branch_id', $branchId))
+                ->update([
+                    'action' => 'invalid',
+                    'status' => 'skipped',
+                    'member_id' => null,
+                    'errors' => json_encode(['This member belongs to another branch — mobile number not imported']),
+                ]);
+        }
 
         // New members must have an approval date to start the waiting period.
         $pending()->whereNull('data->approval_date')->update([
@@ -275,6 +403,7 @@ class MasterlistImportService
         ]);
 
         $pending()->update(['action' => 'new']);
+        $this->flagPossibleDoubleEntries($batch);
 
         return $this->refreshCounts($batch, status: 'staged');
     }
@@ -404,11 +533,72 @@ class MasterlistImportService
     }
 
     /**
+     * A file that lists a member more than once is not imported at all: why, or null when the file is clean.
+     * The repeats must be corrected in Excel (and the file uploaded again) or deleted from the preview first.
+     */
+    public function duplicateProblem(ImportBatch $batch): ?string
+    {
+        $duplicates = ImportRow::query()->where('import_batch_id', $batch->id)->where('action', 'duplicate')->count();
+
+        return $duplicates === 0
+            ? null
+            : 'This file lists '.number_format($duplicates).' Acct. Number(s) more than once, so nothing was imported. Correct the file and upload it again, or delete the duplicate rows from the preview.';
+    }
+
+    /**
+     * A branch's import does not touch the member data until the Administrator has approved it.
+     */
+    public function submitForApproval(ImportBatch $batch): void
+    {
+        if ($problem = $this->duplicateProblem($batch)) {
+            throw new RuntimeException($problem);
+        }
+
+        $batch->update(['status' => 'awaiting_approval']);
+        $batch->recordAudit('submitted_for_approval', null, [
+            'file' => $batch->file_name,
+            'new' => $batch->new_rows,
+            'updates' => $batch->update_rows,
+        ], 'Import sent to the Administrator for approval');
+    }
+
+    /**
+     * The Administrator has checked the import: it may now be written (the browser then drives importChunk()).
+     */
+    public function approve(ImportBatch $batch): void
+    {
+        if ($batch->status !== 'awaiting_approval') {
+            throw new RuntimeException('This import is not waiting for approval.');
+        }
+
+        if ($problem = $this->duplicateProblem($batch)) {
+            throw new RuntimeException($problem);
+        }
+
+        $batch->update(['status' => 'importing']);
+        $batch->recordAudit('import_approved', null, ['file' => $batch->file_name], 'Import approved by the Administrator');
+    }
+
+    public function reject(ImportBatch $batch, string $reason): void
+    {
+        if ($batch->status !== 'awaiting_approval') {
+            throw new RuntimeException('This import is not waiting for approval.');
+        }
+
+        $batch->update(['status' => 'rejected', 'error_message' => $reason]);
+        $batch->recordAudit('import_rejected', null, ['file' => $batch->file_name, 'reason' => $reason], 'Import rejected by the Administrator');
+    }
+
+    /**
      * Write the next chunk of staged rows into the member database. Returns rows processed (0 = done).
      */
     public function importChunk(ImportBatch $batch, int $limit = 200): int
     {
         if ($batch->status === 'staged') {
+            if ($problem = $this->duplicateProblem($batch)) {
+                throw new RuntimeException($problem);
+            }
+
             $batch->update(['status' => 'importing']);
         }
 
@@ -464,6 +654,10 @@ class MasterlistImportService
      */
     private function importRow(ImportBatch $batch, ImportRow $row): string
     {
+        if (($row->data['mode'] ?? null) === 'contacts') {
+            return $this->importContactNumber($row);
+        }
+
         $asOf = $batch->as_of_date;
         $data = $row->action === 'reference'
             ? [$this->referenceField($row->data['kind']) => $row->data['value'], 'account_no' => $row->account_no]
@@ -580,6 +774,27 @@ class MasterlistImportService
         }
 
         $result = $isNew ? 'created' : ($changed ? 'updated' : 'unchanged');
+
+        $row->update(['status' => 'imported', 'result' => $result, 'member_id' => $member->id]);
+
+        return $result;
+    }
+
+    /**
+     * A row of a mobile-number list changes exactly one thing: the contact number of the member it names.
+     * Name, branch, status, category, segment and savings are never touched.
+     *
+     * @return 'updated'|'unchanged'
+     */
+    private function importContactNumber(ImportRow $row): string
+    {
+        $member = Member::withTrashed()->where('account_no', $row->account_no)->firstOrFail();
+        $member->contact_number = $row->data['contact_number'];
+        $result = $member->isDirty('contact_number') ? 'updated' : 'unchanged';
+
+        if ($result === 'updated') {
+            $member->save();
+        }
 
         $row->update(['status' => 'imported', 'result' => $result, 'member_id' => $member->id]);
 

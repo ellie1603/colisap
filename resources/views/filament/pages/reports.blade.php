@@ -9,9 +9,7 @@
             <div class="colisap-actions">
                 <x-filament::button wire:click="export('xlsx')" icon="heroicon-o-table-cells" wire:loading.attr="disabled">Excel (.xlsx)</x-filament::button>
                 <x-filament::button wire:click="export('csv')" icon="heroicon-o-document-text" color="gray" wire:loading.attr="disabled">CSV</x-filament::button>
-                <x-filament::button wire:click="export('pdf')" icon="heroicon-o-printer" color="gray" wire:loading.attr="disabled">PDF</x-filament::button>
-                <x-filament::loading-indicator class="h-5 w-5" wire:loading wire:target="export" />
-            </div>
+                <x-filament::button wire:click="export('pdf')" icon="heroicon-o-printer" color="gray" wire:loading.attr="disabled">PDF</x-filament::button>            </div>
         </div>
     </x-filament::section>
 </x-filament-panels::page>

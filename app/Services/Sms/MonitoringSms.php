@@ -36,6 +36,7 @@ class MonitoringSms
         $body = match ($view) {
             'effectivity' => $this->effectivityText($member),
             'upgrades' => $this->upgradeText($member),
+            'qualified' => $this->qualifiedText($member),
             'replenishment' => $record instanceof ReplenishmentNotice ? $this->replenishmentText($record, $member) : null,
             'dormancy' => $this->dormancyText($member),
             default => null,
@@ -121,12 +122,27 @@ class MonitoringSms
         $required = 'P'.$this->money($this->policy->minimumBalanceFor('60000'));
 
         return match ($member->upgradeStatus()) {
-            'eligible' => 'You are now eligible to upgrade your COLISAP coverage to the 60K category. Please visit '
+            'eligible' => 'You are now eligible to upgrade your COLISAP coverage to the '.Member::higherCategoryLabel().' category. Please visit '
                 .$this->branchOf($member)." to complete it. Required savings: {$required}.",
-            'pending' => 'Your request to upgrade your COLISAP coverage to the 60K category will be eligible on '
+            'pending' => 'Your request to upgrade your COLISAP coverage to the '.Member::higherCategoryLabel().' category will be eligible on '
                 .$this->date($member->upgradeEligibleDate()).". Please keep at least {$required} in your savings by then.",
             default => null,
         };
+    }
+
+    /**
+     * Invitation for a basic-category member whose savings already cover the higher category's maintaining balance.
+     */
+    private function qualifiedText(Member $member): ?string
+    {
+        $required = $this->policy->minimumBalanceFor('60000');
+
+        if ($member->status !== 'active' || $member->category !== '40000' || (float) $member->savings_balance < $required) {
+            return null;
+        }
+
+        return 'Your savings of P'.$this->money((float) $member->savings_balance).' qualifies you to upgrade your COLISAP coverage from '.Member::basicCategoryLabel().' to the '.Member::higherCategoryLabel().' category. Please visit '
+            .$this->branchOf($member).' to apply.';
     }
 
     private function replenishmentText(ReplenishmentNotice $notice, Member $member): ?string

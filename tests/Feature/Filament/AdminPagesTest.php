@@ -3,6 +3,7 @@
 namespace Tests\Feature\Filament;
 
 use App\Filament\Pages\Dashboard;
+use App\Filament\Pages\ImportApprovals;
 use App\Filament\Pages\Monitoring;
 use App\Filament\Pages\PolicySettings;
 use App\Filament\Pages\Reports;
@@ -54,15 +55,15 @@ class AdminPagesTest extends TestCase
             'dashboard' => [Dashboard::class],
             'monitoring effectivity' => [Monitoring::class.'?tab=effectivity'],
             'monitoring upgrades' => [Monitoring::class.'?tab=upgrades'],
+            'monitoring can upgrade' => [Monitoring::class.'?tab=qualified'],
             'monitoring replenishment' => [Monitoring::class.'?tab=replenishment'],
             'monitoring dormancy' => [Monitoring::class.'?tab=dormancy'],
             'reports' => [Reports::class],
+            'import approvals' => [ImportApprovals::class],
             'policy settings' => [PolicySettings::class],
             'members' => [MemberResource::class.'@index'],
-            'member create' => [MemberResource::class.'@create'],
             'member import' => [MemberResource::class.'@import'],
             'applications' => [ApplicationResource::class.'@index'],
-            'application create' => [ApplicationResource::class.'@create'],
             'import history' => [ImportBatchResource::class.'@index'],
             'branches' => [BranchResource::class.'@index'],
             'users' => [UserResource::class.'@index'],

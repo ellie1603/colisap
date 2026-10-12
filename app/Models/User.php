@@ -14,9 +14,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Request;
+use Illuminate\Support\Str;
 use Spatie\Permission\Traits\HasRoles;
 
-#[Fillable(['name', 'email', 'password', 'is_active', 'branch_id'])]
+#[Fillable(['name', 'email', 'password', 'is_active', 'in_usage_report', 'is_developer', 'branch_id'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser
 {
@@ -34,6 +36,8 @@ class User extends Authenticatable implements FilamentUser
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'is_active' => 'boolean',
+            'in_usage_report' => 'boolean',
+            'is_developer' => 'boolean',
         ];
     }
 
@@ -47,9 +51,37 @@ class User extends Authenticatable implements FilamentUser
         return $this->belongsTo(Branch::class);
     }
 
+    /**
+     * Log something this user did that changes no record — signing in, exporting a report —
+     * so the System Usage report can show who is really using the system.
+     *
+     * @param  array<string, mixed>|null  $details
+     */
+    public function recordActivity(string $action, string $module, ?array $details = null): void
+    {
+        AuditLog::create([
+            'user_id' => $this->getKey(),
+            'action' => $action,
+            'module' => $module,
+            'auditable_type' => static::class,
+            'auditable_id' => $this->getKey(),
+            'new_values' => $details,
+            'ip_address' => Request::ip(),
+            'user_agent' => Str::limit((string) Request::userAgent(), 250, ''),
+        ]);
+    }
+
     public function isAdministrator(): bool
     {
         return $this->hasRole(Permissions::ADMIN);
+    }
+
+    /**
+     * The system developer's own account: the only kind that sees developer-only pages such as System Usage.
+     */
+    public function isDeveloper(): bool
+    {
+        return (bool) $this->is_developer;
     }
 
     /**
