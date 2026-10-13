@@ -43,8 +43,10 @@ USER root
 
 RUN install-php-extensions intl gd bcmath exif
 
-# Queue worker and scheduler run as supervised s6 services alongside nginx + php-fpm
-COPY --chmod=755 docker/s6-overlay/s6-rc.d/ /etc/s6-overlay/s6-rc.d/
+# Queue worker and scheduler run as supervised s6 services alongside nginx + php-fpm.
+# The services live in s6-rc.d; they are switched on from user-bundles.d, next to the image's own
+# nginx and php-fpm entries. A "user" folder inside s6-rc.d would stop the container from starting.
+COPY --chmod=755 docker/s6-overlay/ /etc/s6-overlay/
 
 # Container defaults; any of these can be overridden from Dokploy > Environment.
 #  - memory / time limits match the local setup the masterlist import was tested with
