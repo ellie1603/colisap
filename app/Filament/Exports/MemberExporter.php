@@ -10,7 +10,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Streams the (already filtered) member query straight to the browser as XLSX or CSV.
- * Acct. Numbers (CIF Keys) are written as text so leading zeros survive in Excel.
+ * Acct. Numbers are written as text so leading zeros survive in Excel.
  */
 class MemberExporter
 {
@@ -42,7 +42,7 @@ class MemberExporter
         $policy = app(PolicySettings::class);
         $category = 'Category ('.number_format($policy->benefitFor(Member::BASIC_CATEGORY)).' / '.number_format($policy->benefitFor(Member::HIGHER_CATEGORY)).')';
 
-        return ['CIF Key', 'Account Name', 'Branch', 'Segmentation', $category, 'Application Date', 'Status', 'Saving Balance'];
+        return ['Acct. Number', 'Account Name', 'Branch', 'Segmentation', $category, 'Application Date', 'Status', 'Saving Balance'];
     }
 
     /**

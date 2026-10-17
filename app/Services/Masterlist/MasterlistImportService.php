@@ -379,7 +379,7 @@ class MasterlistImportService
         $contacts()->where('action', 'pending')->update([
             'action' => 'invalid',
             'status' => 'skipped',
-            'errors' => json_encode(['No member has this CIF Key — mobile number not imported']),
+            'errors' => json_encode(['No member has this Acct. Number — mobile number not imported']),
         ]);
 
         if ($branchId = Branch::restrictedId()) {

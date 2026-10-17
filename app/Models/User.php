@@ -85,6 +85,15 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /**
+     * Whether the given user may edit or delete this account. Developer accounts can only be changed
+     * by another developer account, never by the coop's own Administrators.
+     */
+    public function isManageableBy(?User $user): bool
+    {
+        return ! $this->isDeveloper() || ($user?->isDeveloper() ?? false);
+    }
+
+    /**
      * The only branch whose data this user may see: staff with a home branch are limited to it,
      * while Administrators and staff without a home branch see every branch (null).
      */

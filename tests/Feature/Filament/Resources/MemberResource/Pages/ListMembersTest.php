@@ -60,7 +60,7 @@ class ListMembersTest extends TestCase
 
         $this->assertSame(['BARBAZA MULTI-PURPOSE COOPERATIVE'], $lines[0]);
         $this->assertSame(['MEMBERSHIP MASTERLIST'], $lines[2]);
-        $this->assertSame(['CIF Key', 'Account Name', 'Branch', 'Segmentation', 'Category (40,000 / 60,000)', 'Application Date', 'Status', 'Saving Balance'], $lines[4]);
+        $this->assertSame(['Acct. Number', 'Account Name', 'Branch', 'Segmentation', 'Category (40,000 / 60,000)', 'Application Date', 'Status', 'Saving Balance'], $lines[4]);
         $this->assertSame(['00101000002', '00101000001'], [$lines[5][0], $lines[6][0]], 'Sorted by branch order (Barbaza before Kalibo).');
         $this->assertSame(['00101000001', 'DELA CRUZ, JUAN', 'Kalibo', 'Gold', '60000', '2024-01-15', 'Active', '2500'], $lines[6]);
     }

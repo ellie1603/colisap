@@ -50,7 +50,7 @@ class WorkbookParserTest extends TestCase
     public static function contactListHeaders(): array
     {
         return [
-            'cif key, name, number' => [['CIF Key', 'Name', 'Number'], true],
+            'acct. number, name, number' => [['Acct. Number', 'Name', 'Number'], true],
             'cp no. heading' => [['Acct. Number', 'Account Name', 'CP No.'], true],
             'cellphone number without a name' => [['CIF Key', 'Cellphone Number'], true],
             'split names and mobile' => [['Account No', 'Last Name', 'First Name', 'Mobile'], true],
@@ -63,7 +63,7 @@ class WorkbookParserTest extends TestCase
      * @param  list<string>  $header
      */
     #[DataProvider('contactListHeaders')]
-    public function test_a_sheet_with_only_cif_key_name_and_number_is_a_mobile_number_list(array $header, bool $expected): void
+    public function test_a_sheet_with_only_account_number_name_and_number_is_a_mobile_number_list(array $header, bool $expected): void
     {
         [, $columns] = $this->parser()->detectHeader([$header]);
 
@@ -72,7 +72,7 @@ class WorkbookParserTest extends TestCase
 
     public function test_a_mobile_number_list_row_gives_the_account_and_the_tidied_number(): void
     {
-        [, $columns] = $this->parser()->detectHeader([['CIF Key', 'Name', 'Number']]);
+        [, $columns] = $this->parser()->detectHeader([['Acct. Number', 'Name', 'Number']]);
 
         $this->assertSame(
             ['mode' => 'contacts', 'account_no' => '00301493995', 'account_name' => 'VICTORIANO, PEDRO JR T', 'contact_number' => '09171234567'],

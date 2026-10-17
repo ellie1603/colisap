@@ -287,7 +287,7 @@ class ImportMembersTest extends TestCase
 
         $path = $this->writeMasterlistWorkbook(tempnam(sys_get_temp_dir(), 'contacts').'.xlsx', [
             'Sheet1' => [
-                ['CIF Key', 'Name', 'Number'],
+                ['Acct. Number', 'Name', 'Number'],
                 ['00101000001', 'DELA CRUZ, JUAN', '09171234567'],
                 ['00301000002', 'LOPEZ, ANA', '09181234567'],
             ],

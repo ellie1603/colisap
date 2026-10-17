@@ -91,7 +91,7 @@ class ImportMembers extends Page implements HasTable
             ->schema([
                 Forms\Components\FileUpload::make('file')
                     ->label('Masterlist workbook')
-                    ->helperText('Excel (.xlsx), OpenDocument (.ods) or CSV. One sheet per branch — the sheet name selects the branch. No row limit. A file with only the CIF Key, name and mobile number updates the members\' mobile numbers and nothing else.')
+                    ->helperText('Excel (.xlsx), OpenDocument (.ods) or CSV. One sheet per branch — the sheet name selects the branch. No row limit. A file with only the Acct. Number, name and mobile number updates the members\' mobile numbers and nothing else.')
                     ->disk(MasterlistImportService::DISK)
                     ->directory(MasterlistImportService::DIRECTORY)
                     ->visibility('private')

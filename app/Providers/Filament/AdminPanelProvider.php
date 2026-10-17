@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\Auth\EditProfile;
 use App\Filament\Pages\Auth\Login;
 use Filament\Actions\MountableAction;
 use Filament\FontProviders\LocalFontProvider;
@@ -10,6 +11,7 @@ use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Navigation\NavigationGroup;
+use Filament\Navigation\NavigationItem;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
@@ -40,7 +42,7 @@ class AdminPanelProvider extends PanelProvider
             ->favicon(asset('images/favicon.png'))
             ->font('Public Sans', url: asset('fonts/public-sans/public-sans.css'), provider: LocalFontProvider::class)
             ->login(Login::class)
-            ->profile(isSimple: false)
+            ->profile(EditProfile::class, isSimple: false)
             ->colors([
                 'primary' => Color::hex('#2E3A8C'),
                 'warning' => Color::Orange,
@@ -78,6 +80,14 @@ class AdminPanelProvider extends PanelProvider
                 NavigationGroup::make('Monitoring')->collapsible(false),
                 NavigationGroup::make('Data & Reports')->collapsible(false),
                 NavigationGroup::make('Administration')->collapsible(false),
+                NavigationGroup::make('Account')->collapsible(false),
+            ])
+            ->navigationItems([
+                NavigationItem::make('My Account')
+                    ->icon('heroicon-o-user-circle')
+                    ->group('Account')
+                    ->url(fn (): string => EditProfile::getUrl())
+                    ->isActiveWhen(fn (): bool => request()->routeIs(EditProfile::getRouteName())),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')

@@ -164,7 +164,7 @@ class WorkbookParser
     }
 
     /**
-     * A mobile-number list: CIF Key (Acct. Number), optionally the name, and a contact number — nothing else.
+     * A mobile-number list: Acct. Number, optionally the name, and a contact number — nothing else.
      * Importing one only updates the contact number of members that already exist.
      *
      * @param  array<string, int|string|null>  $columns

@@ -12,6 +12,7 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rules\Password;
 
@@ -30,6 +31,22 @@ class UserResource extends Resource
     public static function canAccess(): bool
     {
         return Auth::user()?->can('users.manage') ?? false;
+    }
+
+    /**
+     * @param  User  $record
+     */
+    public static function canEdit(Model $record): bool
+    {
+        return parent::canEdit($record) && $record->isManageableBy(Auth::user());
+    }
+
+    /**
+     * @param  User  $record
+     */
+    public static function canDelete(Model $record): bool
+    {
+        return parent::canDelete($record) && $record->isManageableBy(Auth::user());
     }
 
     public static function form(Form $form): Form
@@ -110,12 +127,13 @@ class UserResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make(),
             ])
+            ->checkIfRecordIsSelectableUsing(fn (User $record) => $record->isManageableBy(Auth::user()))
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make()
                         ->modalDescription('Your own account is never deleted, so you cannot lock yourself out.')
                         ->using(fn (Collection $records) => $records
-                            ->reject(fn (User $user) => $user->is(Auth::user()))
+                            ->reject(fn (User $user) => $user->is(Auth::user()) || ! $user->isManageableBy(Auth::user()))
                             ->each->delete()),
                 ]),
             ]);

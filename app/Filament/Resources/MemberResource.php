@@ -261,8 +261,7 @@ class MemberResource extends Resource
             ->modifyQueryUsing(fn (Builder $query) => $query->with('branch'))
             ->columns([
                 Tables\Columns\TextColumn::make('account_no')
-                    ->label('CIF Key')
-                    ->tooltip('CIF Key = Acct. Number')
+                    ->label('Acct. Number')
                     ->searchable()
                     ->sortable()
                     ->copyable()

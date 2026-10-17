@@ -13,7 +13,9 @@ use App\Filament\Resources\MemberResource\Pages\EditMember;
 use App\Filament\Resources\RoleResource;
 use App\Filament\Resources\UserResource;
 use App\Filament\Resources\UserResource\Pages\EditUser;
+use App\Filament\Resources\UserResource\Pages\ListUsers;
 use App\Models\Member;
+use App\Models\User;
 use App\Services\Access\Permissions;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Livewire\Livewire;
@@ -125,5 +127,30 @@ class AccessControlTest extends TestCase
 
         $this->assertTrue($user->fresh()->is_active);
         $this->assertTrue($user->fresh()->hasRole(Permissions::ADMIN));
+    }
+
+    public function test_administrator_cannot_edit_or_delete_a_developer_account(): void
+    {
+        $developer = User::factory()->create(['is_active' => true, 'is_developer' => true])->assignRole(Permissions::ADMIN);
+        $officer = User::factory()->create(['is_active' => true])->assignRole(Permissions::CRS);
+        $this->actingAsRole(Permissions::ADMIN);
+
+        $this->get(UserResource::getUrl('edit', ['record' => $developer]))->assertForbidden();
+
+        Livewire::test(ListUsers::class)
+            ->assertTableActionHidden('edit', $developer)
+            ->assertTableActionVisible('edit', $officer)
+            ->callTableBulkAction('delete', [$developer, $officer]);
+
+        $this->assertModelExists($developer);
+        $this->assertModelMissing($officer);
+    }
+
+    public function test_developer_account_can_edit_another_developer_account(): void
+    {
+        $developer = User::factory()->create(['is_active' => true, 'is_developer' => true])->assignRole(Permissions::ADMIN);
+        $this->actingAs(User::factory()->create(['is_active' => true, 'is_developer' => true])->assignRole(Permissions::ADMIN));
+
+        $this->get(UserResource::getUrl('edit', ['record' => $developer]))->assertOk();
     }
 }

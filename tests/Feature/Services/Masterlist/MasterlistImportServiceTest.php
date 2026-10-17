@@ -204,7 +204,7 @@ class MasterlistImportServiceTest extends TestCase
 
         $batch = $this->stage([
             'Sheet1' => [
-                ['CIF Key', 'Name', 'Number'],
+                ['Acct. Number', 'Name', 'Number'],
                 [301493995, 'A DIFFERENT SPELLING', 9171234567],
                 ['00301493996', 'SANTOS, MARIA', ''],
                 ['00999999999', 'NOT A MEMBER', '09181234567'],
@@ -213,7 +213,7 @@ class MasterlistImportServiceTest extends TestCase
 
         $this->assertSame([0, 1, 2], [$batch->new_rows, $batch->update_rows, $batch->invalid_rows]);
         $this->assertSame(
-            ['00301493996' => ['No mobile number in this row'], '00999999999' => ['No member has this CIF Key — mobile number not imported']],
+            ['00301493996' => ['No mobile number in this row'], '00999999999' => ['No member has this Acct. Number — mobile number not imported']],
             $batch->rows()->where('action', 'invalid')->orderBy('account_no')->get()->mapWithKeys(fn (ImportRow $row) => [$row->account_no => $row->errors])->all(),
         );
 

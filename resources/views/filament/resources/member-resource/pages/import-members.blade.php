@@ -155,7 +155,7 @@
 
                             @if ($sheet['header_row'] && $isContactList)
                                 <p class="colisap-muted">
-                                    This sheet has only the CIF Key, name and mobile number, so it updates the mobile number of members already in the system, matched by CIF Key.
+                                    This sheet has only the Acct. Number, name and mobile number, so it updates the mobile number of members already in the system, matched by Acct. Number.
                                     Names, branch, status, category and savings are not changed, and no new members are added.
                                 </p>
                             @endif
