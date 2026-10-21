@@ -33,6 +33,7 @@ class EditProfile extends BaseEditProfile
             ->inlineLabel(false)
             ->schema([
                 Section::make('Profile')
+                    ->id('profile-section')
                     ->description('Your name as it appears in the system, and the email you sign in with.')
                     ->columns(2)
                     ->schema([
@@ -40,16 +41,18 @@ class EditProfile extends BaseEditProfile
                         $this->getEmailFormComponent()->label('Email (sign-in)'),
                     ]),
                 Section::make('Password')
+                    ->id('password-section')
                     ->description('Leave blank to keep your current password.')
                     ->columns(2)
                     ->schema([
                         $this->getPasswordFormComponent()
                             ->label('New password')
-                            ->rule(Password::min(8)->letters()->numbers())
+                            ->rule(Password::defaults())
                             ->helperText('At least 8 characters, with letters and numbers.'),
                         $this->getPasswordConfirmationFormComponent()->label('Confirm new password'),
                     ]),
                 Section::make('Confirm it is you')
+                    ->id('confirm-section')
                     ->description('Enter your current password to change your email or password.')
                     ->visible(fn (Get $get): bool => filled($get('password')) || $get('email') !== $this->getUser()->email)
                     ->schema([

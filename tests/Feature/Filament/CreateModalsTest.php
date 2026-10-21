@@ -20,7 +20,7 @@ class CreateModalsTest extends TestCase
 
     public function test_a_new_staff_account_is_created_from_a_modal_with_its_role_logged(): void
     {
-        $this->actingAsRole(Permissions::ADMIN);
+        $this->actingAsDeveloper();
 
         Livewire::test(ListUsers::class)
             ->callAction('create', data: [
@@ -67,7 +67,7 @@ class CreateModalsTest extends TestCase
 
         $this->get('/admin')->assertOk()
             ->assertSee('/admin/applications?action=create', escape: false)
-            ->assertSee('New application')
+            ->assertSee('New transaction')
             ->assertDontSee('Add member');
 
         Livewire::withQueryParams(['action' => 'create'])

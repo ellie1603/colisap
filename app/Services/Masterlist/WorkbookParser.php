@@ -15,7 +15,9 @@ use OpenSpout\Reader\ODS\Reader as ODSReader;
 use OpenSpout\Reader\ReaderInterface;
 use OpenSpout\Reader\XLSX\Options as XLSXOptions;
 use OpenSpout\Reader\XLSX\Reader as XLSXReader;
+use RuntimeException;
 use Throwable;
+use ZipArchive;
 
 /**
  * Streams a multi-sheet COLISAP masterlist workbook (one sheet per branch).
@@ -109,6 +111,15 @@ class WorkbookParser
      * consecutive blank rows, which keeps a large workbook to seconds instead of many minutes.
      */
     private const MAX_CONSECUTIVE_BLANK_ROWS = 1000;
+
+    /**
+     * Zip-bomb limits for .xlsx/.ods uploads: the real 17,000-member masterlist unpacks to well under these.
+     */
+    private const MAX_UNPACKED_BYTES = 1024 * 1048576;
+
+    private const MAX_COMPRESSION_RATIO = 100;
+
+    private const MAX_ZIP_ENTRIES = 5000;
 
     public function __construct(
         private NameParser $nameParser,
@@ -741,6 +752,11 @@ class WorkbookParser
             default => trim(preg_replace('/\s+/u', ' ', (string) $value) ?? ''),
         };
 
+        // ="00101234567" is how exports keep an ID's leading zeros in Excel: a formula whose value is the text itself.
+        if (preg_match('/^="((?:[^"]|"")*)"$/', $text, $match) === 1) {
+            return trim(str_replace('""', '"', $match[1]));
+        }
+
         return self::isExcelArtifact($text) ? '' : $text;
     }
 
@@ -773,7 +789,13 @@ class WorkbookParser
      */
     private function open(string $path): ReaderInterface
     {
-        $reader = match (strtolower(pathinfo($path, PATHINFO_EXTENSION))) {
+        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+        if (! in_array($extension, ['csv', 'txt'], true)) {
+            self::guardAgainstZipBomb($path);
+        }
+
+        $reader = match ($extension) {
             'ods' => new ODSReader(tap(new ODSOptions, fn (ODSOptions $options) => $options->SHOULD_PRESERVE_EMPTY_ROWS = true)),
             'csv', 'txt' => new CSVReader(tap(new CSVOptions, fn (CSVOptions $options) => $options->SHOULD_PRESERVE_EMPTY_ROWS = true)),
             default => new XLSXReader(tap(new XLSXOptions, fn (XLSXOptions $options) => $options->SHOULD_PRESERVE_EMPTY_ROWS = true)),
@@ -782,5 +804,39 @@ class WorkbookParser
         $reader->open($path);
 
         return $reader;
+    }
+
+    /**
+     * An Excel/ODS file is a zip archive. A booby-trapped one ("zip bomb") is a few MB but expands to gigabytes
+     * while being read, filling the server's disk and memory, so its unpacked size is checked first.
+     */
+    public static function guardAgainstZipBomb(string $path): void
+    {
+        $zip = new ZipArchive;
+
+        if ($zip->open($path) !== true) {
+            return; // Not a zip at all; the reader reports it as an unreadable file.
+        }
+
+        $unpacked = 0;
+        $packed = 0;
+
+        try {
+            if ($zip->numFiles > self::MAX_ZIP_ENTRIES) {
+                throw new RuntimeException('This file is not a normal workbook (it contains too many parts).');
+            }
+
+            for ($index = 0; $index < $zip->numFiles; $index++) {
+                $entry = $zip->statIndex($index);
+                $unpacked += (int) ($entry['size'] ?? 0);
+                $packed += (int) ($entry['comp_size'] ?? 0);
+            }
+        } finally {
+            $zip->close();
+        }
+
+        if ($unpacked > self::MAX_UNPACKED_BYTES || ($unpacked > 50 * 1048576 && $unpacked > $packed * self::MAX_COMPRESSION_RATIO)) {
+            throw new RuntimeException('This file is not a normal workbook (it would unpack to '.number_format($unpacked / 1048576).' MB), so it was not opened.');
+        }
     }
 }

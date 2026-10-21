@@ -9,6 +9,7 @@ use App\Models\Member;
 use App\Models\SavingsTransaction;
 use App\Services\Colisap\MemberStatusEngine;
 use App\Services\Policy\PolicySettings;
+use App\Services\Privacy\MemberPersonalData;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -153,7 +154,8 @@ class ViewMember extends ViewRecord
                     ->form([
                         Forms\Components\DatePicker::make('application_date')->default(now())->maxDate(now())->required(),
                         Forms\Components\Select::make('category')->options(Member::categoryOptions())->default('40000')->required(),
-                        Forms\Components\Toggle::make('fee_paid')->label('Re-application fee paid'),
+                        Forms\Components\TextInput::make('or_number')->label('OR number')->required()->maxLength(50)->regex('/^[0-9A-Za-z\-\/ ]+$/')
+                            ->helperText('Official receipt number of the re-application fee.'),
                     ])
                     ->action(function (array $data) use ($policy) {
                         $application = Application::create([
@@ -162,6 +164,7 @@ class ViewMember extends ViewRecord
                             'type' => 'reapplication',
                             'status' => 'pending',
                             'fee_amount' => $policy->decimal('reapplication_fee'),
+                            'fee_paid' => true,
                             'previous_status' => $this->record->status,
                         ]);
 
@@ -184,6 +187,38 @@ class ViewMember extends ViewRecord
                     ->icon('heroicon-o-printer')
                     ->url(fn () => route('members.certificate', $this->record), true)
                     ->visible(fn () => $this->record->approval_date !== null),
+                Actions\Action::make('exportPersonalData')
+                    ->label('Export personal data')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->visible(fn () => $can('members.privacy'))
+                    ->requiresConfirmation()
+                    ->modalDescription('Downloads everything COLISAP holds about this member (details, applications, savings, notices and change history) — for a request under the Data Privacy Act. Give it only to the member.')
+                    ->modalSubmitActionLabel('Download')
+                    ->action(fn () => response()->streamDownload(
+                        fn () => print (json_encode(app(MemberPersonalData::class)->export($this->record), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)),
+                        "personal-data-{$this->record->account_no}.json",
+                        ['Content-Type' => 'application/json'],
+                    )),
+                Actions\Action::make('erase')
+                    ->label('Erase permanently')
+                    ->icon('heroicon-o-trash')
+                    ->color('danger')
+                    ->visible(fn () => $can('members.privacy') && $this->record->trashed())
+                    ->modalHeading('Erase this member permanently?')
+                    ->modalDescription('For a request under the Data Privacy Act. The member, their applications, savings, notices, history and imported rows are deleted for good and cannot be restored. Only a note that an erasure happened is kept.')
+                    ->modalSubmitActionLabel('Erase permanently')
+                    ->form(fn () => [
+                        Forms\Components\Textarea::make('reason')->label('Reason / request reference')->required()->rows(2)->maxLength(500),
+                        Forms\Components\TextInput::make('confirm_account_no')->label('Type the Acct. Number to confirm')
+                            ->required()->in([$this->record->account_no])
+                            ->validationMessages(['in' => 'That is not this member\'s Acct. Number.']),
+                    ])
+                    ->action(function (array $data) {
+                        app(MemberPersonalData::class)->erase($this->record, $data['reason']);
+
+                        Notification::make()->title('Member erased permanently')->success()->send();
+                        $this->redirect(MemberResource::getUrl('index'));
+                    }),
             ])
                 ->label('Actions')
                 ->icon('heroicon-m-ellipsis-vertical')

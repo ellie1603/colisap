@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\UserResource\Pages;
 
+use App\Filament\Concerns\DetectsConcurrentEdits;
 use App\Filament\Concerns\ReturnsToPreviousPage;
 use App\Filament\Resources\UserResource;
 use Filament\Actions;
@@ -10,7 +11,7 @@ use Illuminate\Support\Facades\Auth;
 
 class EditUser extends EditRecord
 {
-    use ReturnsToPreviousPage;
+    use DetectsConcurrentEdits, ReturnsToPreviousPage;
 
     protected static string $resource = UserResource::class;
 
@@ -33,6 +34,8 @@ class EditUser extends EditRecord
 
     protected function afterSave(): void
     {
+        $this->rememberCurrentVersion();
+
         $rolesAfter = $this->record->roles()->pluck('name')->sort()->values()->all();
 
         if ($rolesAfter !== $this->rolesBefore) {

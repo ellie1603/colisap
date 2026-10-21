@@ -48,7 +48,7 @@ class ListMembersTest extends TestCase
             'branch_id' => Branch::where('name', 'Kalibo')->value('id'), 'approval_date' => '2024-01-15', 'application_date' => null,
         ]);
         Member::factory()->create(['account_no' => '00101000002', 'account_name' => 'ABAD, ANA', 'branch_id' => Branch::where('name', 'Barbaza')->value('id')]);
-        $this->actingAsRole(Permissions::CRS);
+        $this->actingAsRole(Permissions::ADMIN);
 
         $component = Livewire::test(ListMembers::class)
             ->loadTable()
@@ -139,6 +139,19 @@ class ListMembersTest extends TestCase
         $this->assertSoftDeleted($wrong);
         $this->assertSoftDeleted($alsoWrong);
         $this->assertFalse($kept->fresh()->trashed());
+    }
+
+    public function test_the_member_list_offers_only_the_everyday_filters(): void
+    {
+        $this->actingAsRole(Permissions::ADMIN);
+
+        $filters = array_keys(Livewire::test(ListMembers::class)->instance()->getTable()->getFilters());
+        $this->assertSame(['status', 'branch_id', 'segment', 'category', 'trashed'], $filters);
+
+        $this->actingAs(User::factory()->create(['is_active' => true, 'branch_id' => Branch::where('name', 'Barbaza')->value('id')])->assignRole(Permissions::CRS));
+        Livewire::test(ListMembers::class)
+            ->assertTableFilterHidden('branch_id')
+            ->assertTableFilterVisible('status');
     }
 
     public function test_export_and_import_actions_follow_permissions(): void

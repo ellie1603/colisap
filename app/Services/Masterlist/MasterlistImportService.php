@@ -10,6 +10,8 @@ use App\Models\ImportRow;
 use App\Models\Member;
 use App\Models\SavingsTransaction;
 use App\Services\Policy\PolicySettings;
+use App\Services\Reports\SpreadsheetWriter;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -567,26 +569,42 @@ class MasterlistImportService
      */
     public function approve(ImportBatch $batch): void
     {
-        if ($batch->status !== 'awaiting_approval') {
-            throw new RuntimeException('This import is not waiting for approval.');
-        }
+        $this->decide($batch, function (ImportBatch $locked) {
+            if ($problem = $this->duplicateProblem($locked)) {
+                throw new RuntimeException($problem);
+            }
 
-        if ($problem = $this->duplicateProblem($batch)) {
-            throw new RuntimeException($problem);
-        }
-
-        $batch->update(['status' => 'importing']);
-        $batch->recordAudit('import_approved', null, ['file' => $batch->file_name], 'Import approved by the Administrator');
+            $locked->update(['status' => 'importing']);
+            $locked->recordAudit('import_approved', null, ['file' => $locked->file_name], 'Import approved by the Administrator');
+        });
     }
 
     public function reject(ImportBatch $batch, string $reason): void
     {
-        if ($batch->status !== 'awaiting_approval') {
-            throw new RuntimeException('This import is not waiting for approval.');
-        }
+        $this->decide($batch, function (ImportBatch $locked) use ($reason) {
+            $locked->update(['status' => 'rejected', 'error_message' => $reason]);
+            $locked->recordAudit('import_rejected', null, ['file' => $locked->file_name, 'reason' => $reason], 'Import rejected by the Administrator');
+        });
+    }
 
-        $batch->update(['status' => 'rejected', 'error_message' => $reason]);
-        $batch->recordAudit('import_rejected', null, ['file' => $batch->file_name, 'reason' => $reason], 'Import rejected by the Administrator');
+    /**
+     * Approve or reject with the batch row locked, so two Administrators deciding at once cannot both succeed.
+     *
+     * @param  callable(ImportBatch): void  $decision
+     */
+    private function decide(ImportBatch $batch, callable $decision): void
+    {
+        DB::transaction(function () use ($batch, $decision) {
+            $locked = ImportBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->status !== 'awaiting_approval') {
+                throw new RuntimeException('This import is no longer waiting for approval — someone may have just approved or rejected it.');
+            }
+
+            $decision($locked);
+        });
+
+        $batch->refresh();
     }
 
     /**
@@ -602,51 +620,73 @@ class MasterlistImportService
             $batch->update(['status' => 'importing']);
         }
 
-        $rows = ImportRow::query()
-            ->where('import_batch_id', $batch->id)
-            ->where('status', 'pending')
-            ->whereIn('action', ['new', 'update', 'reference'])
-            ->orderBy('id')
-            ->limit($limit)
-            ->get();
+        // The batch row stays locked while a chunk is written, so the same import open in two tabs (or
+        // two clicks) waits its turn instead of writing the same rows twice.
+        $processed = DB::transaction(function () use ($batch, $limit): int {
+            $locked = ImportBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
 
-        if ($rows->isEmpty()) {
-            $this->complete($batch);
+            $rows = ImportRow::query()
+                ->where('import_batch_id', $batch->id)
+                ->where('status', 'pending')
+                ->whereIn('action', ['new', 'update', 'reference'])
+                ->orderBy('id')
+                ->limit($limit)
+                ->get();
 
-            return 0;
-        }
+            if ($rows->isEmpty()) {
+                return 0;
+            }
 
-        $tally = ['created' => 0, 'updated' => 0, 'unchanged' => 0];
+            $tally = $this->importRows($locked, $rows);
 
-        // One commit per chunk (each row is still its own savepoint) and no per-record audit entries:
-        // the batch, its source rows and the member change history are the import's trail.
-        DB::transaction(function () use ($batch, $rows, &$tally) {
-            AuditLog::withoutRecording(function () use ($batch, $rows, &$tally) {
-                foreach ($rows as $row) {
-                    try {
-                        // Acct. Numbers are matched across every branch, whoever runs the import, so no member is created twice.
-                        $result = Branch::withoutRestriction(fn () => DB::transaction(fn () => $this->importRow($batch, $row)));
-                        $tally[$result]++;
-                    } catch (Throwable $exception) {
-                        report($exception);
+            $locked->update([
+                'processed_rows' => $locked->processed_rows + $rows->count(),
+                'created_count' => $locked->created_count + $tally['created'],
+                'updated_count' => $locked->updated_count + $tally['updated'],
+                'unchanged_count' => $locked->unchanged_count + $tally['unchanged'],
+            ]);
 
-                        $row->update([
-                            'status' => 'skipped',
-                            'errors' => [...($row->errors ?? []), 'Import failed: '.$exception->getMessage()],
-                        ]);
-                    }
-                }
-            });
+            return $rows->count();
         });
 
-        $batch->update([
-            'processed_rows' => $batch->processed_rows + $rows->count(),
-            'created_count' => $batch->created_count + $tally['created'],
-            'updated_count' => $batch->updated_count + $tally['updated'],
-            'unchanged_count' => $batch->unchanged_count + $tally['unchanged'],
-        ]);
+        $batch->refresh();
 
-        return $rows->count();
+        if ($processed === 0) {
+            $this->complete($batch);
+        }
+
+        return $processed;
+    }
+
+    /**
+     * Writes one chunk of staged rows; each row is its own savepoint, so one bad row is skipped, not the chunk.
+     *
+     * @param  Collection<int, ImportRow>  $rows
+     * @return array{created: int, updated: int, unchanged: int}
+     */
+    private function importRows(ImportBatch $batch, Collection $rows): array
+    {
+        $tally = ['created' => 0, 'updated' => 0, 'unchanged' => 0];
+
+        // No per-record audit entries: the batch, its source rows and the member change history are the import's trail.
+        AuditLog::withoutRecording(function () use ($batch, $rows, &$tally) {
+            foreach ($rows as $row) {
+                try {
+                    // Acct. Numbers are matched across every branch, whoever runs the import, so no member is created twice.
+                    $result = Branch::withoutRestriction(fn () => DB::transaction(fn () => $this->importRow($batch, $row)));
+                    $tally[$result]++;
+                } catch (Throwable $exception) {
+                    report($exception);
+
+                    $row->update([
+                        'status' => 'skipped',
+                        'errors' => [...($row->errors ?? []), 'Import failed: '.$exception->getMessage()],
+                    ]);
+                }
+            }
+        });
+
+        return $tally;
     }
 
     /**
@@ -930,7 +970,7 @@ class MasterlistImportService
                 ->orderBy('id')
                 ->chunkById(1000, function ($rows) use ($out) {
                     foreach ($rows as $row) {
-                        fputcsv($out, [
+                        fputcsv($out, array_map([SpreadsheetWriter::class, 'safeCsvValue'], [
                             $row->sheet,
                             $row->row_number,
                             $row->account_no,
@@ -939,7 +979,7 @@ class MasterlistImportService
                             $row->result ?? $row->status,
                             implode('; ', $row->errors ?? []),
                             implode('; ', $row->warnings ?? []),
-                        ]);
+                        ]));
                     }
                 });
 

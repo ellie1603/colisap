@@ -5,6 +5,7 @@ namespace Tests\Feature\Filament;
 use App\Filament\Pages\Monitoring;
 use App\Filament\Pages\PolicySettings;
 use App\Filament\Pages\Reports;
+use App\Filament\Resources\ApplicationResource;
 use App\Filament\Resources\AuditLogResource;
 use App\Filament\Resources\BranchResource;
 use App\Filament\Resources\ImportBatchResource;
@@ -34,6 +35,7 @@ class AccessControlTest extends TestCase
     {
         $pages = [
             'members' => MemberResource::class.'@index',
+            'applications' => ApplicationResource::class.'@index',
             'import' => MemberResource::class.'@import',
             'import history' => ImportBatchResource::class.'@index',
             'monitoring' => Monitoring::class,
@@ -46,8 +48,8 @@ class AccessControlTest extends TestCase
         ];
 
         $expected = [
-            Permissions::ADMIN => ['members' => 200, 'import' => 200, 'import history' => 200, 'monitoring' => 200, 'reports' => 200, 'users' => 200, 'roles' => 200, 'branches' => 200, 'policy' => 200, 'audit' => 200],
-            Permissions::CRS => ['members' => 200, 'import' => 200, 'import history' => 200, 'monitoring' => 200, 'reports' => 200, 'users' => 403, 'roles' => 403, 'branches' => 403, 'policy' => 403, 'audit' => 403],
+            Permissions::ADMIN => ['members' => 200, 'applications' => 200, 'import' => 200, 'import history' => 200, 'monitoring' => 200, 'reports' => 200, 'users' => 403, 'roles' => 200, 'branches' => 200, 'policy' => 200, 'audit' => 200],
+            Permissions::CRS => ['members' => 200, 'applications' => 200, 'import' => 200, 'import history' => 200, 'monitoring' => 403, 'reports' => 403, 'users' => 403, 'roles' => 403, 'branches' => 403, 'policy' => 403, 'audit' => 403],
         ];
 
         $cases = [];
@@ -114,9 +116,9 @@ class AccessControlTest extends TestCase
         $this->assertGuest();
     }
 
-    public function test_administrator_cannot_deactivate_or_demote_own_account(): void
+    public function test_developer_cannot_deactivate_or_demote_own_account(): void
     {
-        $user = $this->actingAsRole(Permissions::ADMIN);
+        $user = $this->actingAsDeveloper();
 
         Livewire::test(EditUser::class, ['record' => $user->getRouteKey()])
             ->assertFormFieldIsDisabled('is_active')
@@ -129,21 +131,37 @@ class AccessControlTest extends TestCase
         $this->assertTrue($user->fresh()->hasRole(Permissions::ADMIN));
     }
 
-    public function test_administrator_cannot_edit_or_delete_a_developer_account(): void
+    public function test_only_the_developer_account_sees_staff_accounts(): void
     {
-        $developer = User::factory()->create(['is_active' => true, 'is_developer' => true])->assignRole(Permissions::ADMIN);
         $officer = User::factory()->create(['is_active' => true])->assignRole(Permissions::CRS);
         $this->actingAsRole(Permissions::ADMIN);
 
-        $this->get(UserResource::getUrl('edit', ['record' => $developer]))->assertForbidden();
+        $this->get('/admin')->assertOk()->assertDontSee('Staff Accounts');
+        $this->get(UserResource::getUrl('edit', ['record' => $officer]))->assertForbidden();
 
-        Livewire::test(ListUsers::class)
-            ->assertTableActionHidden('edit', $developer)
-            ->assertTableActionVisible('edit', $officer)
-            ->callTableBulkAction('delete', [$developer, $officer]);
+        $this->actingAsDeveloper();
 
-        $this->assertModelExists($developer);
-        $this->assertModelMissing($officer);
+        $this->get(UserResource::getUrl('index'))->assertOk();
+    }
+
+    public function test_staff_accounts_show_the_last_sign_in_and_flag_accounts_unused_for_ninety_days(): void
+    {
+        $this->travelTo('2026-01-05 09:00:00');
+        $idle = User::factory()->create(['name' => 'Idle Officer', 'is_active' => true])->assignRole(Permissions::CRS);
+        $idle->recordActivity('login', 'Sign-in');
+
+        $this->travelTo('2026-06-01 09:00:00');
+        $busy = User::factory()->create(['name' => 'Busy Officer', 'is_active' => true])->assignRole(Permissions::CRS);
+        $busy->recordActivity('login', 'Sign-in');
+        $this->actingAsDeveloper();
+
+        $html = Livewire::test(ListUsers::class)
+            ->assertCanSeeTableRecords([$idle, $busy])
+            ->assertSee('Last sign-in')
+            ->html();
+
+        $this->assertSame(1, substr_count($html, 'Not used for 90+ days — review access'), 'Only the idle account is flagged.');
+        $this->assertSame(1, substr_count($html, '4 months ago'), 'The idle account last signed in in January.');
     }
 
     public function test_developer_account_can_edit_another_developer_account(): void

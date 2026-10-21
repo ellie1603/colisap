@@ -18,23 +18,6 @@ RUN composer install \
     --ignore-platform-reqs
 
 ############################################
-# Frontend assets
-############################################
-FROM node:22-alpine AS assets
-
-WORKDIR /app
-
-COPY package.json .npmrc ./
-RUN npm install
-
-COPY vite.config.js ./
-COPY resources ./resources
-COPY public ./public
-COPY --from=vendor /app/vendor ./vendor
-
-RUN npm run build
-
-############################################
 # Application image
 ############################################
 FROM serversideup/php:8.3-fpm-nginx AS app
@@ -70,7 +53,6 @@ WORKDIR /var/www/html
 
 COPY --chown=www-data:www-data --from=vendor /app/vendor ./vendor
 COPY --chown=www-data:www-data . .
-COPY --chown=www-data:www-data --from=assets /app/public/build ./public/build
 
 RUN mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views storage/logs bootstrap/cache \
     && composer dump-autoload --optimize --no-dev --no-interaction \

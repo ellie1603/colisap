@@ -62,7 +62,7 @@ class Member extends Model
      *
      * @var list<string>
      */
-    private const TRACKED_FIELDS = ['status', 'category', 'segment', 'branch_id'];
+    private const TRACKED_FIELDS = ['status', 'category', 'segment', 'branch_id', 'sms_opt_out'];
 
     protected $fillable = [
         'account_no',
@@ -75,6 +75,8 @@ class Member extends Model
         'birthdate',
         'sex',
         'contact_number',
+        'sms_opt_out',
+        'sms_opt_out_at',
         'email',
         'address',
         'application_date',
@@ -118,6 +120,8 @@ class Member extends Model
         'terminated_at' => 'date',
         'withdrawn_at' => 'date',
         'source_values' => 'array',
+        'sms_opt_out' => 'boolean',
+        'sms_opt_out_at' => 'date',
     ];
 
     private ?string $changeReason = null;
@@ -143,6 +147,11 @@ class Member extends Model
         static::saving(function (Member $member) {
             if (Auth::id()) {
                 $member->updated_by = Auth::id();
+            }
+
+            // The date the member asked to stop SMS reminders, kept as proof of their request.
+            if ($member->isDirty('sms_opt_out')) {
+                $member->sms_opt_out_at = $member->sms_opt_out ? Carbon::today() : null;
             }
         });
 

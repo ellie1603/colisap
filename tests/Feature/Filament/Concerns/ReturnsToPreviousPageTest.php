@@ -28,7 +28,7 @@ class ReturnsToPreviousPageTest extends TestCase
 
     public function test_saving_a_staff_account_returns_to_the_list_it_was_opened_from_with_the_saved_message(): void
     {
-        $this->actingAsRole(Permissions::ADMIN);
+        $this->actingAsDeveloper();
         $user = User::factory()->create(['is_active' => true])->assignRole(Permissions::CRS);
         $list = UserResource::getUrl('index').'?page=2';
         session()->setPreviousUrl($list);

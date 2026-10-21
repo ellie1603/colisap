@@ -324,8 +324,12 @@ class Monitoring extends Page implements HasTable
             ->icon('heroicon-o-chat-bubble-left-ellipsis')
             ->color('info')
             ->visible(fn () => $this->canSendSms())
-            ->disabled(fn (Member|ReplenishmentNotice $record) => $this->mobileNumberOf($record) === null)
-            ->tooltip(fn (Member|ReplenishmentNotice $record) => $this->mobileNumberOf($record) === null ? 'No mobile number on file' : null)
+            ->disabled(fn (Member|ReplenishmentNotice $record) => $this->mobileNumberOf($record) === null || $this->memberOf($record)?->sms_opt_out)
+            ->tooltip(fn (Member|ReplenishmentNotice $record) => match (true) {
+                (bool) $this->memberOf($record)?->sms_opt_out => 'The member asked not to receive SMS',
+                $this->mobileNumberOf($record) === null => 'No mobile number on file',
+                default => null,
+            })
             ->modalHeading(fn (Member|ReplenishmentNotice $record) => 'Send SMS to '.$this->memberOf($record)?->account_name)
             ->modalSubmitActionLabel('Send SMS')
             ->fillForm(fn (Member|ReplenishmentNotice $record) => ['message' => app(MonitoringSms::class)->message($this->tab, $record)])
@@ -409,6 +413,7 @@ class Monitoring extends Page implements HasTable
 
         $details = array_filter([
             $summary['no_number'] ? "{$summary['no_number']} skipped — no mobile number on file." : null,
+            $summary['opted_out'] ? "{$summary['opted_out']} skipped — asked not to receive SMS." : null,
             $summary['not_applicable'] ? "{$summary['not_applicable']} skipped — nothing to remind in this view." : null,
             $summary['failed'] ? "{$summary['failed']} not sent: ".implode('; ', array_slice($summary['errors'], 0, 3)).($summary['failed'] > 3 ? '…' : '') : null,
         ]);

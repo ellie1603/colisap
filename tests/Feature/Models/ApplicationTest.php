@@ -24,7 +24,7 @@ class ApplicationTest extends TestCase
     private const ACCOUNT = '00101959720';
 
     /**
-     * What a qualified new applicant enters on the New application form.
+     * What a qualified new applicant enters on the New transaction form.
      *
      * @return array<string, mixed>
      */
@@ -40,9 +40,6 @@ class ApplicationTest extends TestCase
             'savings_balance' => 750,
             'application_date' => '2026-10-12',
             'category' => '40000',
-            'good_health_declared' => true,
-            'age_verified' => true,
-            'balance_verified' => true,
             ...$overrides,
         ];
     }
@@ -95,7 +92,7 @@ class ApplicationTest extends TestCase
         Livewire::test(ListApplications::class)
             ->callAction('create', data: $this->applicantData())
             ->assertHasNoActionErrors()
-            ->assertNotified('Application filed')
+            ->assertNotified('Transaction saved')
             ->assertNoRedirect();
 
         $application = Application::sole();
@@ -118,7 +115,7 @@ class ApplicationTest extends TestCase
 
         Livewire::test(EditApplication::class, ['record' => $application->getRouteKey()])
             ->callAction('approve', ['approved_at' => '2026-10-12'])
-            ->assertNotified('Application approved');
+            ->assertNotified('Transaction approved');
 
         $member = Member::sole();
         $application->refresh();
@@ -137,9 +134,6 @@ class ApplicationTest extends TestCase
     public static function unqualifiedApplicants(): array
     {
         return [
-            'not in good health' => [['good_health_declared' => false], 'good_health_declared'],
-            'age not verified' => [['age_verified' => false], 'age_verified'],
-            'maintaining balance not verified' => [['balance_verified' => false], 'balance_verified'],
             'savings below the maintaining balance' => [['savings_balance' => 499], 'savings_balance'],
             'savings below the higher category balance' => [['category' => '60000', 'savings_balance' => 1500], 'savings_balance'],
             'over 59 years and 6 months old' => [['birthdate' => '1960-01-01'], 'birthdate'],
@@ -162,13 +156,22 @@ class ApplicationTest extends TestCase
         $this->assertSame([0, 0], [Application::count(), Member::count()]);
     }
 
-    public function test_the_checklist_refusal_explains_that_it_is_required_by_policy(): void
+    public function test_an_application_is_filed_without_a_qualification_checklist(): void
     {
         $this->actingAsRole(Permissions::CRS);
 
         Livewire::test(ListApplications::class)
-            ->callAction('create', data: $this->applicantData(['good_health_declared' => false]))
-            ->assertSee('Required by policy. An applicant who does not meet this cannot apply for COLISAP.');
+            ->mountAction('create')
+            ->assertDontSee('Qualification checklist')
+            ->callMountedAction()
+            ->assertHasActionErrors();
+
+        Livewire::test(ListApplications::class)
+            ->callAction('create', data: $this->applicantData())
+            ->assertHasNoActionErrors()
+            ->assertNotified('Transaction saved');
+
+        $this->assertSame('pending', Application::sole()->status);
     }
 
     public function test_the_application_form_refuses_a_second_application_for_the_same_account_number(): void
@@ -194,14 +197,12 @@ class ApplicationTest extends TestCase
                 'account_no' => self::ACCOUNT,
                 'application_date' => now()->toDateString(),
                 'category' => '40000',
-                'good_health_declared' => true,
-                'age_verified' => true,
-                'balance_verified' => true,
-                'fee_paid' => true,
+                'or_number' => 'OR-20261019-07',
             ])
             ->assertHasNoActionErrors();
 
         $application = Application::sole();
+        $this->assertSame(['OR-20261019-07', true], [$application->or_number, $application->fee_paid]);
 
         $this->assertSame(
             [$member->id, 'reapplication', 'pending', 'terminated', '30.00'],
@@ -238,7 +239,7 @@ class ApplicationTest extends TestCase
         Livewire::test(EditApplication::class, ['record' => $application->getRouteKey()])
             ->assertActionHidden('approve')
             ->callAction('reopen')
-            ->assertNotified('Application reopened')
+            ->assertNotified('Transaction reopened')
             ->assertActionHidden('reopen')
             ->callAction('approve', ['approved_at' => now()->toDateString()]);
 
@@ -248,17 +249,17 @@ class ApplicationTest extends TestCase
         $this->assertSame(1, Application::where('member_id', $application->member_id)->count());
     }
 
-    public function test_saving_the_checklist_of_a_pending_application_is_not_blocked_by_the_rule(): void
+    public function test_a_pending_application_can_be_saved_with_new_remarks(): void
     {
-        $application = Application::factory()->create(['status' => 'pending', 'good_health_declared' => false]);
+        $application = Application::factory()->create(['status' => 'pending']);
         $this->actingAsRole(Permissions::ADMIN);
 
         Livewire::test(EditApplication::class, ['record' => $application->getRouteKey()])
-            ->fillForm(['good_health_declared' => true])
+            ->fillForm(['remarks' => 'Documents received at the branch'])
             ->call('save')
             ->assertHasNoFormErrors();
 
-        $this->assertTrue($application->refresh()->good_health_declared);
+        $this->assertSame('Documents received at the branch', $application->refresh()->remarks);
     }
 
     public function test_start_re_application_is_only_offered_when_it_would_not_be_a_double(): void

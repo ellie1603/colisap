@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\UserResource\Pages;
+use App\Models\AuditLog;
 use App\Models\Branch;
 use App\Models\User;
 use App\Services\Access\Permissions;
@@ -11,8 +12,10 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rules\Password;
 
@@ -28,9 +31,14 @@ class UserResource extends Resource
 
     protected static ?int $navigationSort = 1;
 
+    /**
+     * Staff Accounts belong to the developer (super admin) account only; the coop's own Administrator does not see them.
+     */
     public static function canAccess(): bool
     {
-        return Auth::user()?->can('users.manage') ?? false;
+        $user = Auth::user();
+
+        return ($user?->isDeveloper() ?? false) && $user->can('users.manage');
     }
 
     /**
@@ -64,7 +72,7 @@ class UserResource extends Resource
                 Forms\Components\TextInput::make('password')
                     ->password()
                     ->required(fn (string $context) => $context === 'create')
-                    ->rule(Password::min(8)->letters()->numbers())
+                    ->rule(Password::defaults())
                     ->revealable()
                     ->dehydrated(fn ($state) => filled($state))
                     ->maxLength(255)
@@ -77,7 +85,7 @@ class UserResource extends Resource
                     ->disabled(fn (?User $record) => $record?->is(Auth::user()) ?? false)
                     ->helperText(fn (?User $record) => $record?->is(Auth::user())
                         ? 'You cannot change your own roles.'
-                        : 'Administrator: full access, including users, roles, branches, policy settings and the audit log. CRS Officer: imports the NATCCO masterlist, adds and updates members, and uses monitoring and reports.')
+                        : 'Administrator: full access, including users, roles, branches, policy settings and the audit log. CRS Officer: adds member transactions (new member, active member, upgrade, re-application), updates member details, and imports or exports the Excel masterlist.')
                     ->required(),
                 Forms\Components\Select::make('branch_id')
                     ->label('Home branch')
@@ -107,9 +115,19 @@ class UserResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            // Last sign-in from the sign-in log, in the same query, for the periodic access review.
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['roles', 'branch'])->addSelect([
+                'last_sign_in_at' => AuditLog::query()
+                    ->selectRaw('max(created_at)')
+                    ->where('action', 'login')
+                    ->whereColumn('audit_logs.user_id', 'users.id'),
+            ]))
             ->columns([
                 Tables\Columns\TextColumn::make('name')
-                    ->searchable(),
+                    ->searchable()
+                    ->description(fn (User $record) => $record->is_active && self::needsAccessReview($record)
+                        ? 'Not used for '.self::ACCESS_REVIEW_DAYS.'+ days — review access'
+                        : null),
                 Tables\Columns\TextColumn::make('email')
                     ->searchable()
                     ->visibleFrom('sm'),
@@ -120,6 +138,14 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('branch.name')
                     ->label('Branch')
                     ->placeholder('All')
+                    ->visibleFrom('md'),
+                Tables\Columns\TextColumn::make('last_sign_in_at')
+                    ->label('Last sign-in')
+                    ->since()
+                    ->dateTimeTooltip()
+                    ->placeholder('Never')
+                    ->color(fn (User $record) => $record->is_active && self::needsAccessReview($record) ? 'warning' : null)
+                    ->sortable()
                     ->visibleFrom('md'),
                 Tables\Columns\IconColumn::make('is_active')
                     ->boolean(),
@@ -137,6 +163,18 @@ class UserResource extends Resource
                             ->each->delete()),
                 ]),
             ]);
+    }
+
+    /**
+     * Accounts unused this long are flagged in Staff Accounts so the Administrator reviews (deactivates) them.
+     */
+    public const ACCESS_REVIEW_DAYS = 90;
+
+    public static function needsAccessReview(User $user): bool
+    {
+        $lastUsed = $user->last_sign_in_at ?? $user->created_at;
+
+        return $lastUsed !== null && Carbon::parse($lastUsed)->lt(now()->subDays(self::ACCESS_REVIEW_DAYS));
     }
 
     public static function getPages(): array

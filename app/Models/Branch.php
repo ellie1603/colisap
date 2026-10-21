@@ -127,7 +127,7 @@ class Branch extends Model
     private static function normalize(string $name): string
     {
         $name = Str::lower(Str::ascii($name));
-        $name = preg_replace('/\b(branch|sheet|office)\b/', '', $name) ?? $name;
+        $name = preg_replace('/\b(branch|sheet|office|main)\b/', '', $name) ?? $name;
 
         return preg_replace('/[^a-z]/', '', $name) ?? '';
     }

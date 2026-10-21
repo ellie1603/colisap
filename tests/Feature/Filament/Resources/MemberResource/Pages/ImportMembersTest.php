@@ -173,7 +173,7 @@ class ImportMembersTest extends TestCase
     public function test_validation_can_be_cancelled_which_returns_to_the_mapping_screen_and_discards_the_rows_read(): void
     {
         Storage::fake('local');
-        $this->actingAsRole(Permissions::CRS);
+        $this->actingAsRole(Permissions::ADMIN);
 
         $page = Livewire::test(ImportMembers::class)
             ->set('upload.file', $this->workbookUpload())

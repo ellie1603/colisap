@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\AvatarProviders\InitialsAvatarProvider;
 use App\Filament\Pages\Auth\EditProfile;
 use App\Filament\Pages\Auth\Login;
 use Filament\Actions\MountableAction;
@@ -39,10 +40,13 @@ class AdminPanelProvider extends PanelProvider
             ->brandName('COLISAP — Barbaza MPC')
             ->brandLogo(fn (): View => view('filament.brand'))
             ->brandLogoHeight('2.75rem')
-            ->favicon(asset('images/favicon.png'))
-            ->font('Public Sans', url: asset('fonts/public-sans/public-sans.css'), provider: LocalFontProvider::class)
+            // Site-relative: these are built before the request is known to be HTTPS (Dokploy's proxy),
+            // and a full http:// address would be blocked by the browser on the https:// site.
+            ->favicon('/images/favicon.png')
+            ->font('Public Sans', url: '/fonts/public-sans/public-sans.css', provider: LocalFontProvider::class)
             ->login(Login::class)
             ->profile(EditProfile::class, isSimple: false)
+            ->defaultAvatarProvider(InitialsAvatarProvider::class)
             ->colors([
                 'primary' => Color::hex('#2E3A8C'),
                 'warning' => Color::Orange,
@@ -63,7 +67,7 @@ class AdminPanelProvider extends PanelProvider
                     950 => '11, 15, 40',
                 ],
             ])
-            ->renderHook(PanelsRenderHook::STYLES_AFTER, fn () => new HtmlString('<link rel="stylesheet" href="'.e(asset('css/colisap.css')).'?v=18">'))
+            ->renderHook(PanelsRenderHook::STYLES_AFTER, fn () => new HtmlString('<link rel="stylesheet" href="'.e(asset('css/colisap.css')).'?v=22">'))
             ->renderHook(PanelsRenderHook::GLOBAL_SEARCH_BEFORE, fn (): View => view('filament.topbar-date'))
             ->renderHook(PanelsRenderHook::GLOBAL_SEARCH_AFTER, fn (): View => view('filament.theme-toggle'))
             ->renderHook(PanelsRenderHook::SIDEBAR_FOOTER, fn (): View => view('filament.sidebar-footer'))
@@ -73,6 +77,7 @@ class AdminPanelProvider extends PanelProvider
                 ? view('filament.splash', ['userName' => auth()->user()->name])
                 : '')
             ->spa()
+            ->unsavedChangesAlerts()
             ->sidebarCollapsibleOnDesktop()
             ->maxContentWidth(MaxWidth::Full)
             ->navigationGroups([

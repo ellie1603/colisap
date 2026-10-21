@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\MemberResource\Pages;
 
+use App\Filament\Concerns\DetectsConcurrentEdits;
 use App\Filament\Concerns\ReturnsToPreviousPage;
 use App\Filament\Resources\MemberResource;
 use Filament\Actions;
@@ -11,7 +12,7 @@ use Livewire\Attributes\On;
 
 class EditMember extends EditRecord
 {
-    use ReturnsToPreviousPage;
+    use DetectsConcurrentEdits, ReturnsToPreviousPage;
 
     protected static string $resource = MemberResource::class;
 
@@ -50,6 +51,8 @@ class EditMember extends EditRecord
 
     protected function afterSave(): void
     {
+        $this->rememberCurrentVersion();
+
         if (blank($this->record->account_name)) {
             $this->record->updateQuietly(['account_name' => $this->record->composeAccountName()]);
         }

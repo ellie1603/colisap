@@ -3,6 +3,7 @@
 namespace Tests\Feature\Filament;
 
 use App\Filament\Pages\Monitoring;
+use App\Filament\Resources\ApplicationResource;
 use App\Filament\Resources\ApplicationResource\Pages\EditApplication;
 use App\Filament\Resources\MemberResource\Pages\ViewMember;
 use App\Models\Application;
@@ -34,16 +35,20 @@ class WorkflowTest extends TestCase
         ]);
     }
 
-    public function test_application_with_unchecked_requirements_cannot_be_approved(): void
+    public function test_there_is_no_qualification_checklist_to_tick_before_filing_or_approving(): void
     {
-        $application = Application::factory()->create(['good_health_declared' => false]);
+        $application = Application::factory()->create(['good_health_declared' => false, 'age_verified' => false, 'balance_verified' => false]);
         $this->actingAsRole(Permissions::ADMIN);
+
+        $this->get(ApplicationResource::getUrl('edit', ['record' => $application]))
+            ->assertOk()
+            ->assertDontSee('Qualification checklist');
 
         Livewire::test(EditApplication::class, ['record' => $application->getRouteKey()])
             ->callAction('approve', ['approved_at' => now()->toDateString()])
-            ->assertNotified('Requirements incomplete');
+            ->assertNotified('Transaction approved');
 
-        $this->assertSame('pending', $application->fresh()->status);
+        $this->assertSame('approved', $application->fresh()->status);
     }
 
     public function test_voluntary_withdrawal_and_reapplication_preserve_history(): void
@@ -64,7 +69,7 @@ class WorkflowTest extends TestCase
         Storage::disk('local')->assertExists($member->withdrawal_document);
 
         Livewire::test(ViewMember::class, ['record' => $member->getRouteKey()])
-            ->callAction('reapply', ['application_date' => now()->toDateString(), 'category' => '40000', 'fee_paid' => true]);
+            ->callAction('reapply', ['application_date' => now()->toDateString(), 'category' => '40000', 'or_number' => 'OR-1001']);
 
         $reapplication = $member->applications()->where('type', 'reapplication')->sole();
         $this->assertSame(['pending', '30.00', 'withdrawn'], [$reapplication->status, $reapplication->fee_amount, $reapplication->previous_status]);

@@ -29,7 +29,7 @@ class ConsolidateRolesMigrationTest extends TestCase
         $this->assertSame([Permissions::ADMIN], $admin->fresh()->getRoleNames()->all());
         $this->assertSame([Permissions::ADMIN, Permissions::CRS], Role::orderBy('name')->pluck('name')->all());
         $this->assertFalse(Permission::where('name', 'like', 'claims.%')->orWhere('name', 'like', 'contributions.%')->exists());
-        $this->assertTrue($auditor->fresh()->can('members.import'));
+        $this->assertTrue($auditor->fresh()->can('members.update'));
         $this->assertFalse($auditor->fresh()->can('users.manage'));
     }
 }

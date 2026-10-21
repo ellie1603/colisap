@@ -88,7 +88,7 @@ class AuditLogResource extends Resource
                     ->color(fn (string $state) => match ($state) {
                         'created' => 'success',
                         'updated' => 'warning',
-                        'deleted' => 'danger',
+                        'deleted', 'login_failed', 'login_locked' => 'danger',
                         default => 'info',
                     }),
                 Tables\Columns\TextColumn::make('module')->searchable()->visibleFrom('sm'),

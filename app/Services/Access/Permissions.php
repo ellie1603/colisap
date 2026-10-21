@@ -5,7 +5,8 @@ namespace App\Services\Access;
 /**
  * Role-based access control map. Policies and pages check these permission names.
  * Two roles: the Administrator (bypasses every check, see AppServiceProvider Gate::before)
- * and the CRS Officer, who imports, adds and maintains member records.
+ * and the CRS Officer, who adds members (by filing applications), updates them, files re-applications
+ * and imports or exports the Excel masterlist.
  */
 final class Permissions
 {
@@ -32,9 +33,12 @@ final class Permissions
         'members.delete' => 'Archive members',
         'members.restore' => 'Restore archived members',
         'members.import' => 'Import Excel masterlist',
+        'members.privacy' => 'Export or permanently erase a member\'s personal data',
         'members.export' => 'Export members',
-        'applications.view' => 'View applications',
-        'applications.create' => 'File applications',
+        'bmpc_members.view' => 'View BMPC members (the whole cooperative member list)',
+        'bmpc_members.import' => 'Import the BMPC member list',
+        'applications.view' => 'View member transactions',
+        'applications.create' => 'Add member transactions (new, active, upgrade, re-application)',
         'applications.manage' => 'Approve or reject applications, re-applications & withdrawals',
         'savings.view' => 'View savings',
         'savings.manage' => 'Record savings transactions',
@@ -49,6 +53,7 @@ final class Permissions
         'roles.manage' => 'Manage roles & permissions',
         'policy.manage' => 'Edit policy settings',
         'audit.view' => 'View audit logs',
+        'monitoring_api.manage' => 'Manage BMPC ONE monitoring API keys',
     ];
 
     /**
@@ -62,7 +67,7 @@ final class Permissions
             self::ADMIN => array_keys(self::ALL),
             self::CRS => [
                 'members.view', 'members.create', 'members.update', 'members.import', 'members.export',
-                'applications.view', 'applications.create', 'savings.view', 'monitoring.view', 'monitoring.send_sms', 'reports.view', 'imports.view',
+                'applications.view', 'applications.create', 'imports.view', 'bmpc_members.view', 'bmpc_members.import',
             ],
         ];
     }

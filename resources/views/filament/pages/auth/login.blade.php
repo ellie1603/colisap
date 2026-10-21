@@ -77,6 +77,57 @@
 
             {{ \Filament\Support\Facades\FilamentView::renderHook(\Filament\View\PanelsRenderHook::AUTH_LOGIN_FORM_AFTER, scopes: $this->getRenderHookScopes()) }}
 
+            @if ($offersDesktopApp)
+                @php($desktopApp = $this->desktopApp())
+                {{-- Closing the card is remembered in this browser; a small link stays so the app can still be downloaded. --}}
+                <div
+                    x-data="{
+                        hidden: (() => { try { return localStorage.getItem('colisap.hideDesktopApp') === '1' } catch (e) { return false } })(),
+                        hide() { this.hidden = true; try { localStorage.setItem('colisap.hideDesktopApp', '1') } catch (e) {} },
+                        show() { this.hidden = false; try { localStorage.removeItem('colisap.hideDesktopApp') } catch (e) {} },
+                    }"
+                >
+                <div x-show="! hidden" x-cloak>
+                <div class="colisap-login__or" aria-hidden="true"><span>or use the desktop app</span></div>
+
+                <div class="colisap-login__app-wrap">
+                <a class="colisap-login__app" href="{{ $desktopApp['url'] }}" download>
+                    <span class="colisap-login__app-icon">
+                        <img src="{{ asset('images/logo-192.png') }}" alt="">
+                    </span>
+                    <span class="colisap-login__app-text">
+                        <span class="colisap-login__app-title">COLISAP for Windows</span>
+                        <span class="colisap-login__app-meta">
+                            Its own window and desktop icon &middot; updates itself
+                        </span>
+                        <span class="colisap-login__app-meta">
+                            Windows 10/11 &middot; {{ $desktopApp['size'] }}@if ($desktopApp['version']) &middot; v{{ $desktopApp['version'] }}@endif
+                        </span>
+                    </span>
+                    <span class="colisap-login__app-action">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                        Download
+                    </span>
+                </a>
+                <button type="button" class="colisap-login__app-close" x-on:click="hide()" aria-label="Close — don't show the desktop app again" title="Don't show this again">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" stroke-linecap="round" /></svg>
+                </button>
+                </div>
+                <p class="colisap-login__app-note">
+                    First time opening it, Windows may say &ldquo;Windows protected your PC&rdquo;: choose <strong>More info</strong> &rarr; <strong>Run anyway</strong>.
+                </p>
+                </div>
+
+                <p class="colisap-login__app-again" x-show="hidden" x-cloak>
+                    <a href="{{ $desktopApp['url'] }}" download>Download the Windows app</a>
+                    <span aria-hidden="true">&middot;</span>
+                    <button type="button" x-on:click="show()">Show details</button>
+                </p>
+                </div>
+            @endif
+
             <p class="colisap-login__footnote">
                 &copy; {{ now()->year }} Barbaza MPC &middot; Authorized personnel only
             </p>

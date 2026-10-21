@@ -1,0 +1,43 @@
+# Runs the whole test suite and a security check of the PHP packages on every push and pull request,
+# and every Monday (9:00 AM Philippine time) so newly published vulnerabilities are caught even when
+# nothing changed. If this fails, do not deploy the commit to Dokploy until it is fixed.
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '0 1 * * 1'
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: zip, gd, intl, pdo_sqlite, sqlite3, bcmath, mbstring
+          coverage: none
+
+      - name: Install PHP packages
+        run: composer install --no-interaction --no-progress --prefer-dist
+
+      - name: Check PHP packages for known security problems
+        run: composer audit --no-interaction
+
+      - name: Prepare the environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate --no-interaction
+
+      - name: Check code style
+        run: vendor/bin/pint --test
+
+      - name: Run the tests
+        run: php artisan test --compact

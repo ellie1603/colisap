@@ -7,6 +7,7 @@ use App\Models\Concerns\BelongsToActiveMember;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Savings ledger. Every entry adjusts the member's savings balance, so the balance shown in
@@ -76,9 +77,18 @@ class SavingsTransaction extends Model
         });
     }
 
+    /**
+     * Moves the member's balance by the transaction amount with the member row locked, so two transactions
+     * recorded at the same moment cannot overwrite each other's change.
+     */
     private function applyToMember(float $delta, bool $isNew = false): void
     {
-        $member = Member::find($this->member_id);
+        DB::transaction(fn () => $this->applyToLockedMember($delta, $isNew));
+    }
+
+    private function applyToLockedMember(float $delta, bool $isNew): void
+    {
+        $member = Member::query()->whereKey($this->member_id)->lockForUpdate()->first();
 
         if (! $member) {
             return;

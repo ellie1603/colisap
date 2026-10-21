@@ -5,6 +5,7 @@ namespace App\Filament\Widgets;
 use App\Filament\Pages\Monitoring;
 use App\Filament\Resources\ApplicationResource;
 use App\Filament\Resources\MemberResource;
+use App\Filament\Resources\MemberResource\Pages\ImportMembers;
 use App\Models\Branch;
 use App\Models\Member;
 use App\Services\Policy\PolicySettings;
@@ -43,8 +44,8 @@ class DashboardHeader extends Widget
                 $policy->int('dormancy_months').'-month dormancy',
             ],
             'actions' => array_filter([
-                ApplicationResource::canCreate() ? ['label' => 'New application', 'icon' => 'heroicon-m-user-plus', 'url' => ApplicationResource::getUrl('index', ['action' => 'create']), 'primary' => true] : null,
-                ['label' => 'Import Excel', 'icon' => 'heroicon-m-arrow-up-tray', 'url' => MemberResource::getUrl('import'), 'primary' => false],
+                ApplicationResource::canCreate() ? ['label' => 'New transaction', 'icon' => 'heroicon-m-user-plus', 'url' => ApplicationResource::getUrl('index', ['action' => 'create']), 'primary' => true] : null,
+                ImportMembers::canAccess() ? ['label' => 'Import Excel', 'icon' => 'heroicon-m-arrow-up-tray', 'url' => MemberResource::getUrl('import'), 'primary' => false] : null,
                 Monitoring::canAccess() ? ['label' => 'Monitoring', 'icon' => 'heroicon-m-eye', 'url' => Monitoring::getUrl(), 'primary' => false] : null,
             ]),
         ];

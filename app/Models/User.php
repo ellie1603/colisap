@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Request;
 use Illuminate\Support\Str;
 use Spatie\Permission\Traits\HasRoles;
@@ -39,6 +40,18 @@ class User extends Authenticatable implements FilamentUser
             'in_usage_report' => 'boolean',
             'is_developer' => 'boolean',
         ];
+    }
+
+    /**
+     * A password change is logged on its own (the hash is never logged), so it shows in the audit trail.
+     */
+    protected static function booted(): void
+    {
+        static::updated(function (User $user) {
+            if ($user->wasChanged('password')) {
+                $user->recordAudit('password_changed', null, null, $user->is(Auth::user()) ? 'Changed own password' : 'Password set by an administrator');
+            }
+        });
     }
 
     public function canAccessPanel(Panel $panel): bool

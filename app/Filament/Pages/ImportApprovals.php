@@ -105,7 +105,13 @@ class ImportApprovals extends Page implements HasTable
                     ->modalSubmitActionLabel('Reject import')
                     ->form([Textarea::make('reason')->label('Reason')->required()->rows(3)->maxLength(500)])
                     ->action(function (ImportBatch $record, array $data) {
-                        app(MasterlistImportService::class)->reject($record, $data['reason']);
+                        try {
+                            app(MasterlistImportService::class)->reject($record, $data['reason']);
+                        } catch (RuntimeException $exception) {
+                            Notification::make()->title('This import cannot be rejected')->body($exception->getMessage())->danger()->send();
+
+                            return;
+                        }
 
                         Notification::make()->title('Import rejected')->body('Nothing from this file was added to the system.')->success()->send();
                     }),

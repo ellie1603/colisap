@@ -23,6 +23,8 @@ class MonitoringSmsTest extends TestCase
     {
         parent::setUp();
 
+        // Monitoring and SMS are the Administrator's by default; an Administrator can grant them to CRS Officers.
+        $this->grantToRole(Permissions::CRS, 'monitoring.view', 'monitoring.send_sms');
         Http::preventStrayRequests();
         config(['services.etxtmo' => ['url' => 'https://sms.test/api/v1', 'key' => 'txm_test_key']]);
     }
@@ -106,6 +108,35 @@ class MonitoringSmsTest extends TestCase
         Livewire::withQueryParams(['tab' => 'upgrades'])
             ->test(Monitoring::class)
             ->assertCanSeeTableRecords([$member]);
+    }
+
+    public function test_a_member_who_asked_not_to_be_texted_is_skipped_and_cannot_be_texted_one_by_one(): void
+    {
+        $this->fakeGatewayAcceptingMessages();
+        $optedOut = Member::factory()->waiting()->create(['contact_number' => '09181113333', 'sms_opt_out' => true]);
+        $wantsSms = Member::factory()->waiting()->create(['contact_number' => '09181114444']);
+        $this->actingAsRole(Permissions::CRS);
+
+        Livewire::test(Monitoring::class)
+            ->assertTableActionDisabled('sendSms', $optedOut)
+            ->callTableBulkAction('sendSmsToSelected', [$optedOut, $wantsSms])
+            ->assertNotified('1 SMS queued for sending');
+
+        Http::assertSentCount(1);
+        Http::assertSent(fn (Request $request) => $request->data()['to'] === '09181114444');
+    }
+
+    public function test_turning_on_the_opt_out_records_the_date_of_the_request(): void
+    {
+        $this->travelTo('2026-10-18');
+        $member = Member::factory()->create();
+
+        $member->update(['sms_opt_out' => true]);
+        $this->assertSame('2026-10-18', $member->fresh()->sms_opt_out_at->toDateString());
+        $this->assertSame('1', (string) $member->histories()->where('field', 'sms_opt_out')->value('new_value'));
+
+        $member->update(['sms_opt_out' => false]);
+        $this->assertNull($member->fresh()->sms_opt_out_at);
     }
 
     public function test_selected_members_each_get_the_effectivity_reminder_and_those_without_a_number_are_skipped(): void

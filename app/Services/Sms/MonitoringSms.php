@@ -50,11 +50,12 @@ class MonitoringSms
      * per call, members without a usable mobile number are skipped, and each SMS is kept in the member's audit log.
      *
      * @param  iterable<Member|ReplenishmentNotice>  $records
-     * @return array{sent: int, no_number: int, not_applicable: int, failed: int, errors: list<string>}
+     *                                                         Members who asked not to be texted are skipped too.
+     * @return array{sent: int, no_number: int, opted_out: int, not_applicable: int, failed: int, errors: list<string>}
      */
     public function send(string $view, iterable $records, ?string $message = null): array
     {
-        $summary = ['sent' => 0, 'no_number' => 0, 'not_applicable' => 0, 'failed' => 0, 'errors' => []];
+        $summary = ['sent' => 0, 'no_number' => 0, 'opted_out' => 0, 'not_applicable' => 0, 'failed' => 0, 'errors' => []];
         $outbox = [];
         $members = [];
 
@@ -64,6 +65,12 @@ class MonitoringSms
 
             if ($member === null || $text === null || isset($outbox[$member->id])) {
                 $summary['not_applicable']++;
+
+                continue;
+            }
+
+            if ($member->sms_opt_out) {
+                $summary['opted_out']++;
 
                 continue;
             }

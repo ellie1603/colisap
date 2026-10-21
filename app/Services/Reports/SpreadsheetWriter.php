@@ -47,6 +47,7 @@ class SpreadsheetWriter
                 $cells = [];
 
                 foreach (array_values($row) as $index => $value) {
+                    $value = $format === 'csv' ? self::safeCsvValue($value) : $value;
                     $cells[] = in_array($index, $textColumns, true) && $value !== null
                         ? new Cell\StringCell((string) $value, null)
                         : Cell::fromValue($value);
@@ -59,5 +60,16 @@ class SpreadsheetWriter
         }, "{$baseName}.{$format}", [
             'Content-Type' => $format === 'csv' ? 'text/csv; charset=UTF-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
+    }
+
+    /**
+     * CSV/formula injection: Excel runs a CSV cell that starts with = + - @ (or a tab/return) as a formula, so such
+     * text is written with a leading apostrophe. Numbers are left alone; XLSX text cells are never formulas.
+     */
+    public static function safeCsvValue(mixed $value): mixed
+    {
+        return is_string($value) && $value !== '' && in_array($value[0], ['=', '+', '-', '@', '	', ''], true)
+            ? "'".$value
+            : $value;
     }
 }

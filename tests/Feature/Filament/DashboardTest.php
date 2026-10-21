@@ -63,13 +63,24 @@ class DashboardTest extends TestCase
     public function test_the_top_of_the_dashboard_is_rendered_in_the_first_response_not_lazy_loaded(): void
     {
         Member::factory()->create();
-        $this->actingAsRole(Permissions::CRS);
+        $this->actingAsRole(Permissions::ADMIN);
 
         $this->get('/admin')
             ->assertOk()
             ->assertSee('class="colisap-kpi colisap-kpi--total"', escape: false)
             ->assertSee('Action center')
             ->assertSee('New approvals');
+    }
+
+    public function test_crs_officer_dashboard_offers_new_application_and_import_but_no_monitoring_or_action_center(): void
+    {
+        $this->actingAsRole(Permissions::CRS);
+
+        $this->get('/admin')
+            ->assertOk()
+            ->assertSee('New transaction')
+            ->assertSee('Import Excel')
+            ->assertDontSee('Action center');
     }
 
     public function test_status_by_branch_covers_the_fourteen_branches_in_their_official_code_order(): void

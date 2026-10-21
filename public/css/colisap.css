@@ -135,8 +135,52 @@
 .colisap-login .fi-form-actions .fi-btn:focus-visible { outline: 2px solid var(--cl-yellow); outline-offset: 2px; }
 
 .colisap-login__footnote { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid rgba(var(--gray-950), .08); text-align: center;
-    font-size: .8rem; color: rgb(var(--gray-400)); }
+    font-size: .8rem; color: rgb(var(--gray-500)); }
+.dark .colisap-login__footnote { color: rgb(var(--gray-400)); }
 .dark .colisap-login__footnote { border-top-color: rgba(255, 255, 255, .08); }
+
+/* "Or use the desktop app": shown in a web browser only */
+.colisap-login__or { display: flex; align-items: center; gap: .75rem; margin: 1.75rem 0 1rem; font-size: .75rem; font-weight: 600;
+    letter-spacing: .08em; text-transform: uppercase; color: rgb(var(--gray-500)); }
+.dark .colisap-login__or { color: rgb(var(--gray-400)); }
+.colisap-login__or::before, .colisap-login__or::after { content: ""; flex: 1; height: 1px; background: rgba(var(--gray-950), .1); }
+.dark .colisap-login__or::before, .dark .colisap-login__or::after { background: rgba(255, 255, 255, .1); }
+.colisap-login__app { display: flex; align-items: center; gap: .9rem; padding: .85rem .9rem; border-radius: .9rem; text-decoration: none;
+    background: rgb(var(--gray-50)); box-shadow: inset 0 0 0 1px rgba(46, 58, 140, .14); transition: box-shadow .2s ease, background .2s ease; }
+.colisap-login__app:hover { background: #fff; box-shadow: inset 0 0 0 1.5px var(--cl-indigo), 0 12px 24px -16px rgba(46, 58, 140, .6); }
+.colisap-login__app:focus-visible { outline: 2px solid var(--cl-yellow); outline-offset: 2px; }
+.dark .colisap-login__app { background: rgb(var(--gray-900)); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.dark .colisap-login__app:hover { background: rgb(var(--gray-900)); box-shadow: inset 0 0 0 1.5px #7CC4F0; }
+.colisap-login__app-icon { flex: none; display: grid; place-items: center; width: 2.75rem; height: 2.75rem; border-radius: .7rem; background: #fff;
+    box-shadow: 0 0 0 1px rgba(46, 58, 140, .12); }
+.colisap-login__app-icon img { width: 2rem; height: 2rem; }
+.colisap-login__app-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .1rem; }
+.colisap-login__app-title { font-size: .95rem; font-weight: 700; color: var(--cl-indigo-deep); }
+.dark .colisap-login__app-title { color: #fff; }
+.colisap-login__app-meta { font-size: .75rem; color: rgb(var(--gray-500)); }
+.dark .colisap-login__app-meta { color: rgb(var(--gray-400)); }
+.colisap-login__app-action { flex: none; display: inline-flex; align-items: center; gap: .35rem; padding: .5rem .8rem; border-radius: .6rem;
+    font-size: .8rem; font-weight: 700; color: #fff; background: var(--cl-indigo); }
+.colisap-login__app-action svg { width: 1rem; height: 1rem; }
+.colisap-login__app-note { margin-top: .6rem; font-size: .72rem; line-height: 1.45; color: rgb(var(--gray-500)); }
+.dark .colisap-login__app-note { color: rgb(var(--gray-400)); }
+.colisap-login__app-note strong { font-weight: 600; color: rgb(var(--gray-500)); }
+.dark .colisap-login__app-note strong { color: rgb(var(--gray-300)); }
+.colisap-login__app-wrap { position: relative; }
+.colisap-login__app-wrap .colisap-login__app { padding-right: 2.6rem; }
+.colisap-login__app-close { position: absolute; top: .4rem; right: .4rem; display: grid; place-items: center; width: 1.75rem; height: 1.75rem; border: 0; border-radius: .5rem;
+    background: transparent; color: rgb(var(--gray-500)); cursor: pointer; transition: background .15s ease, color .15s ease; }
+.colisap-login__app-close svg { width: 1rem; height: 1rem; }
+.colisap-login__app-close:hover { background: rgba(var(--gray-950), .06); color: rgb(var(--gray-950)); }
+.dark .colisap-login__app-close { color: rgb(var(--gray-400)); }
+.dark .colisap-login__app-close:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+.colisap-login__app-close:focus-visible { outline: 2px solid var(--cl-yellow); outline-offset: 1px; }
+.colisap-login__app-again { margin-top: 1.5rem; text-align: center; font-size: .8rem; color: rgb(var(--gray-500)); }
+.dark .colisap-login__app-again { color: rgb(var(--gray-400)); }
+.colisap-login__app-again a, .colisap-login__app-again button { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--cl-indigo); cursor: pointer; text-decoration: none; }
+.colisap-login__app-again a:hover, .colisap-login__app-again button:hover { text-decoration: underline; }
+.dark .colisap-login__app-again a, .dark .colisap-login__app-again button { color: #7CC4F0; }
+@media (max-width: 380px) { .colisap-login__app-action { padding: .5rem; font-size: 0; gap: 0; } }
 
 /* Login lockout notice */
 .colisap-login__lockout { display: flex; gap: .85rem; align-items: flex-start; margin-bottom: 1.5rem; padding: .9rem 1rem; border-radius: .85rem;
@@ -701,7 +745,7 @@ body.fi-body .fi-btn.fi-btn-color-gray:not(.fi-btn-outlined) { box-shadow: inset
 .dark .fi-main .fi-ta-search-field .fi-input-wrp:focus-within { box-shadow: inset 0 0 0 2px #7CC4F0; }
 .fi-main .fi-ta-table thead tr { background: var(--cx-tint); }
 .fi-main .fi-ta-header-cell-label { font-size: .68rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: rgb(var(--gray-500)); }
-.fi-main .fi-ta-header-cell-sort-icon { color: rgb(var(--gray-400)); }
+.fi-main .fi-ta-header-cell-sort-icon { color: rgb(var(--gray-500)); }
 .fi-main .fi-ta-table tbody > * { border-color: var(--cx-hairline); }
 .fi-main .fi-ta-row { transition: background .12s ease; }
 .fi-main .fi-ta-row:hover { background: var(--cx-tint); }
@@ -816,3 +860,27 @@ body.fi-body .fi-no-notification-title { font-weight: 700; }
 /* Livewire page-navigation progress bar: brand colours, easy to see */
 #nprogress .bar { height: 3px !important; background: linear-gradient(90deg, #1E88C8, #FFD200, #E8691C) !important; }
 #nprogress .peg { box-shadow: 0 0 10px #E8691C, 0 0 5px #FFD200 !important; }
+
+/* Monitoring API page */
+.colisap-apikey { display: flex; flex-direction: column; gap: .5rem; padding: 1rem 1.15rem; border-radius: .9rem; background: var(--cx-card-bg);
+    box-shadow: inset 0 0 0 1.5px rgba(46, 58, 140, .45), var(--cx-card-shadow); }
+.dark .colisap-apikey { box-shadow: inset 0 0 0 1.5px rgba(124, 196, 240, .5), var(--cx-card-shadow); }
+.colisap-apikey__title { font-weight: 700; color: rgb(var(--gray-950)); }
+.dark .colisap-apikey__title { color: #fff; }
+.colisap-apikey__text { font-size: .875rem; color: rgb(var(--gray-500)); }
+.dark .colisap-apikey__text { color: rgb(var(--gray-400)); }
+.colisap-apikey__value { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.colisap-apikey__value code { flex: 1; min-width: 0; overflow-wrap: anywhere; padding: .55rem .7rem; border-radius: .55rem; font-size: .85rem;
+    background: rgb(var(--gray-100)); color: rgb(var(--gray-950)); }
+.dark .colisap-apikey__value code { background: rgb(var(--gray-950)); color: #fff; }
+.colisap-apidoc { display: grid; grid-template-columns: minmax(8rem, max-content) 1fr; gap: .55rem 1.25rem; font-size: .875rem; }
+.colisap-apidoc dt { font-weight: 600; color: rgb(var(--gray-950)); }
+.dark .colisap-apidoc dt { color: #fff; }
+.colisap-apidoc dd { color: rgb(var(--gray-600)); overflow-wrap: anywhere; }
+.dark .colisap-apidoc dd { color: rgb(var(--gray-300)); }
+.colisap-apidoc code, .colisap-apilog code { font-size: .8rem; padding: .05rem .35rem; border-radius: .35rem; background: rgb(var(--gray-100)); }
+.dark .colisap-apidoc code, .dark .colisap-apilog code { background: rgb(var(--gray-800)); }
+@media (max-width: 640px) { .colisap-apidoc { grid-template-columns: 1fr; } .colisap-apidoc dd { margin-bottom: .4rem; } }
+.colisap-apilog { display: flex; flex-direction: column; gap: .45rem; }
+.colisap-apilog__row { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .75rem; font-size: .85rem; }
+.colisap-apilog__time { min-width: 9.5rem; color: rgb(var(--gray-500)); }

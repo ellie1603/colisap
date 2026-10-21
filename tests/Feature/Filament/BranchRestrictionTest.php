@@ -16,6 +16,7 @@ use App\Services\Reports\ReportService;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class BranchRestrictionTest extends TestCase
@@ -88,6 +89,7 @@ class BranchRestrictionTest extends TestCase
     {
         $own = Member::factory()->waiting()->create(['branch_id' => $this->branchId('Barbaza')]);
         $other = Member::factory()->waiting()->create(['branch_id' => $this->branchId('Kalibo')]);
+        Role::findByName(Permissions::CRS, 'web')->givePermissionTo('monitoring.view');
         $this->actingAsStaff(Permissions::CRS, 'Barbaza');
 
         Livewire::test(ListMembers::class)

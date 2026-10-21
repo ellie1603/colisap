@@ -3,7 +3,9 @@
 namespace App\Services\Colisap;
 
 use App\Filament\Pages\Monitoring;
+use App\Filament\Resources\AuditLogResource;
 use App\Filament\Resources\MemberResource;
+use App\Models\AuditLog;
 use App\Models\Branch;
 use App\Models\Member;
 use App\Models\ReplenishmentNotice;
@@ -11,6 +13,7 @@ use App\Services\Policy\PolicySettings;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * Live monitoring figures for the dashboard, monitoring page, alerts and reports.
@@ -248,6 +251,17 @@ class MonitoringService
             ['info', 'Upgrade eligibility', 'Members whose 90-day upgrade waiting period is complete.', $this->upgradeQuery('eligible')->count(), Monitoring::getUrl(['tab' => 'upgrades'])],
             ['info', 'Incomplete member information', 'Members without approval date or branch.', Member::query()->participating()->where(fn (Builder $q) => $q->whereNull('approval_date')->orWhereNull('branch_id'))->count(), MemberResource::getUrl('index')],
         ];
+
+        // Security alert for whoever can read the audit log: sign-ins locked after repeated wrong passwords.
+        if (Auth::user()?->can('audit.view')) {
+            array_unshift($alerts, [
+                'critical',
+                'Repeated failed sign-ins',
+                'Sign-ins locked in the last 24 hours after too many wrong passwords. Check who it was; if it was not your staff, change the passwords concerned.',
+                AuditLog::query()->where('action', 'login_locked')->where('created_at', '>=', now()->subDay())->count(),
+                AuditLogResource::getUrl('index', ['tableFilters' => ['action' => ['value' => 'login_locked']]]),
+            ]);
+        }
 
         return collect($alerts)
             ->map(fn (array $alert) => array_combine(['severity', 'title', 'description', 'count', 'url'], $alert))

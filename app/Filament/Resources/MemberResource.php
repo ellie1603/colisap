@@ -90,6 +90,12 @@ class MemberResource extends Resource
                             }),
                         Forms\Components\Select::make('sex')->options(['male' => 'Male', 'female' => 'Female']),
                         Forms\Components\TextInput::make('contact_number')->tel()->maxLength(50),
+                        Forms\Components\Toggle::make('sms_opt_out')
+                            ->label('Does not want SMS reminders')
+                            ->helperText(fn (?Member $record) => $record?->sms_opt_out_at
+                                ? 'Asked to stop on '.$record->sms_opt_out_at->toFormattedDateString().'. SMS reminders from Monitoring skip this member.'
+                                : 'Turn on when the member asks not to be texted. SMS reminders from Monitoring will skip them.')
+                            ->inline(false),
                         Forms\Components\TextInput::make('email')->email()->maxLength(255),
                         Forms\Components\Textarea::make('address')->rows(2)->columnSpanFull(),
                     ]),
@@ -204,7 +210,10 @@ class MemberResource extends Resource
                                 Infolists\Components\TextEntry::make('birthdate')->date()->placeholder('—')
                                     ->helperText(fn (Member $record) => $record->age() !== null ? $record->age().' years old' : null),
                                 Infolists\Components\TextEntry::make('sex')->formatStateUsing(fn (?string $state) => ucfirst((string) $state))->placeholder('—'),
-                                Infolists\Components\TextEntry::make('contact_number')->placeholder('—'),
+                                Infolists\Components\TextEntry::make('contact_number')->placeholder('—')
+                                    ->helperText(fn (Member $record) => $record->sms_opt_out
+                                        ? 'No SMS reminders (member’s request'.($record->sms_opt_out_at ? ', since '.$record->sms_opt_out_at->toFormattedDateString() : '').')'
+                                        : null),
                                 Infolists\Components\TextEntry::make('email')->placeholder('—'),
                                 Infolists\Components\TextEntry::make('address')->placeholder('—')->columnSpanFull(),
                             ]),
@@ -317,7 +326,9 @@ class MemberResource extends Resource
                     ->label('Branch')
                     ->options(fn () => Branch::options())
                     ->multiple()
-                    ->searchable(),
+                    ->searchable()
+                    // Staff limited to one branch only ever see that branch, so the filter would have one choice.
+                    ->visible(fn () => Branch::restrictedId() === null),
                 Tables\Filters\SelectFilter::make('segment')
                     ->label('Segmentation')
                     ->options([...Member::SEGMENTS, 'none' => 'Unassigned'])
@@ -338,62 +349,10 @@ class MemberResource extends Resource
                 Tables\Filters\SelectFilter::make('category')
                     ->label('Category')
                     ->options(Member::categoryOptions()),
-                Tables\Filters\TernaryFilter::make('below_minimum')
-                    ->label('Savings vs. minimum')
-                    ->placeholder('All')
-                    ->trueLabel('Below minimum')
-                    ->falseLabel('Meets minimum')
-                    ->queries(
-                        true: fn (Builder $query) => $query->where(fn (Builder $q) => $q
-                            ->where(fn (Builder $q) => $q->where('category', '60000')->where('savings_balance', '<', static::policy()->decimal('min_balance_60k')))
-                            ->orWhere(fn (Builder $q) => $q->where('category', '<>', '60000')->where('savings_balance', '<', static::policy()->decimal('min_balance_40k')))),
-                        false: fn (Builder $query) => $query->where(fn (Builder $q) => $q
-                            ->where(fn (Builder $q) => $q->where('category', '60000')->where('savings_balance', '>=', static::policy()->decimal('min_balance_60k')))
-                            ->orWhere(fn (Builder $q) => $q->where('category', '<>', '60000')->where('savings_balance', '>=', static::policy()->decimal('min_balance_40k')))),
-                    ),
-                Tables\Filters\TernaryFilter::make('dormancy_flag')
-                    ->label('Savings dormancy flag')
-                    ->placeholder('All')
-                    ->trueLabel('Flagged dormant')
-                    ->falseLabel('Not flagged')
-                    ->queries(
-                        true: fn (Builder $query) => $query->where('savings_account_status', 'like', 'dormant%'),
-                        false: fn (Builder $query) => $query->where(fn (Builder $q) => $q->whereNull('savings_account_status')->orWhere('savings_account_status', 'not like', 'dormant%')),
-                    ),
-                static::dateRangeFilter('approval_date', 'Approval date'),
-                static::dateRangeFilter('application_date', 'Application date'),
-                Tables\Filters\Filter::make('effectivity')
-                    ->form([
-                        Forms\Components\DatePicker::make('effective_from')->label('Effective from'),
-                        Forms\Components\DatePicker::make('effective_until')->label('Effective until'),
-                    ])
-                    ->query(function (Builder $query, array $data) {
-                        $days = static::policy()->int('effectivity_days');
-
-                        return $query
-                            ->when($data['effective_from'] ?? null, fn (Builder $q, $date) => $q->whereDate('approval_date', '>=', Carbon::parse($date)->subDays($days)))
-                            ->when($data['effective_until'] ?? null, fn (Builder $q, $date) => $q->whereDate('approval_date', '<=', Carbon::parse($date)->subDays($days)));
-                    }),
-                Tables\Filters\Filter::make('balance')
-                    ->form([
-                        Forms\Components\TextInput::make('balance_min')->label('Savings from (₱)')->numeric(),
-                        Forms\Components\TextInput::make('balance_max')->label('Savings to (₱)')->numeric(),
-                    ])
-                    ->query(fn (Builder $query, array $data) => $query
-                        ->when(filled($data['balance_min'] ?? null), fn (Builder $q) => $q->where('savings_balance', '>=', (float) $data['balance_min']))
-                        ->when(filled($data['balance_max'] ?? null), fn (Builder $q) => $q->where('savings_balance', '<=', (float) $data['balance_max']))),
-                Tables\Filters\Filter::make('age')
-                    ->form([
-                        Forms\Components\TextInput::make('age_min')->label('Age from')->numeric(),
-                        Forms\Components\TextInput::make('age_max')->label('Age to')->numeric(),
-                    ])
-                    ->query(fn (Builder $query, array $data) => $query
-                        ->when(filled($data['age_min'] ?? null), fn (Builder $q) => $q->whereDate('birthdate', '<=', Carbon::today()->subYears((int) $data['age_min'])))
-                        ->when(filled($data['age_max'] ?? null), fn (Builder $q) => $q->whereDate('birthdate', '>', Carbon::today()->subYears((int) $data['age_max'] + 1)))),
                 Tables\Filters\TrashedFilter::make()
                     ->label('Archived members'),
             ])
-            ->filtersFormColumns(['sm' => 2, 'lg' => 3])
+            ->filtersFormColumns(2)
             ->persistFiltersInSession()
             ->actions([
                 // No "view" button: clicking a row already opens the member, and a button per row slows the list.
@@ -414,18 +373,6 @@ class MemberResource extends Resource
             ->paginated([10, 25, 50, 100])
             ->defaultPaginationPageOption(10)
             ->striped();
-    }
-
-    private static function dateRangeFilter(string $column, string $label): Tables\Filters\Filter
-    {
-        return Tables\Filters\Filter::make($column)
-            ->form([
-                Forms\Components\DatePicker::make("{$column}_from")->label("{$label} from"),
-                Forms\Components\DatePicker::make("{$column}_until")->label("{$label} until"),
-            ])
-            ->query(fn (Builder $query, array $data) => $query
-                ->when($data["{$column}_from"] ?? null, fn (Builder $q, $date) => $q->whereDate($column, '>=', $date))
-                ->when($data["{$column}_until"] ?? null, fn (Builder $q, $date) => $q->whereDate($column, '<=', $date)));
     }
 
     /**

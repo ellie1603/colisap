@@ -1,0 +1,182 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - generic [ref=f1e3]:
+      - navigation [ref=f1e5]:
+        - generic [ref=f1e6]:
+          - generic "Tuesday, 20 October 2026" [ref=f1e7]: Tue, 20 Oct 2026
+          - generic [ref=f1e13]:
+            - generic [ref=f1e14]: Global search
+            - searchbox "Global search" [ref=f1e20]
+          - switch "Switch to dark mode" [ref=f1e21] [cursor=pointer]
+          - button "User menu" [ref=f1e34] [cursor=pointer]:
+            - img "Avatar of BMPC Administrator" [ref=f1e35]
+      - main [ref=f1e36]:
+        - generic [ref=f1e41]:
+          - generic [ref=f1e43]:
+            - generic [ref=f1e48]:
+              - generic [ref=f1e49]:
+                - paragraph [ref=f1e50]: Barbaza Multi-Purpose Cooperative · Coop Life Savings Program
+                - heading "Good morning, BMPC" [level=1] [ref=f1e52]
+                - paragraph [ref=f1e53]: COLISAP portfolio overview as of Tuesday, 20 October 2026. Key figures refresh automatically every minute.
+              - navigation "Quick actions" [ref=f1e54]:
+                - link "New transaction" [ref=f1e55] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/applications?action=create
+                - link "Import Excel" [ref=f1e58] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/members/import
+                - link "Monitoring" [ref=f1e62] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/monitoring
+            - generic [ref=f1e66]:
+              - generic [ref=f1e67]: Policy in force
+              - list [ref=f1e68]:
+                - listitem [ref=f1e69]: 180-day waiting period
+                - listitem [ref=f1e70]: 90-day 60K upgrade
+                - listitem [ref=f1e71]: Min. balance ₱500 / ₱2,000
+                - listitem [ref=f1e72]: 15-day replenishment
+                - listitem [ref=f1e73]: 3-month dormancy
+          - generic [ref=f1e75]:
+            - link "Total members 0 All COLISAP records across every status Member status distribution Waiting 0 Active 0 Dormant 0 Deceased 0 Terminated 0 Withdrawn 0" [ref=f1e76] [cursor=pointer]:
+              - /url: http://colisap.test/admin/members
+              - generic [ref=f1e77]: Total members
+              - paragraph [ref=f1e81]: "0"
+              - paragraph [ref=f1e82]: All COLISAP records across every status
+              - img "Member status distribution"
+              - list [ref=f1e83]:
+                - listitem [ref=f1e84]:
+                  - generic [ref=f1e86]: Waiting
+                  - generic [ref=f1e87]: "0"
+                - listitem [ref=f1e88]:
+                  - generic [ref=f1e90]: Active
+                  - generic [ref=f1e91]: "0"
+                - listitem [ref=f1e92]:
+                  - generic [ref=f1e94]: Dormant
+                  - generic [ref=f1e95]: "0"
+                - listitem [ref=f1e96]:
+                  - generic [ref=f1e98]: Deceased
+                  - generic [ref=f1e99]: "0"
+                - listitem [ref=f1e100]:
+                  - generic [ref=f1e102]: Terminated
+                  - generic [ref=f1e103]: "0"
+                - listitem [ref=f1e104]:
+                  - generic [ref=f1e106]: Withdrawn
+                  - generic [ref=f1e107]: "0"
+            - link "Active 0 0% of members Effective participants" [ref=f1e108] [cursor=pointer]:
+              - /url: http://colisap.test/admin/members?activeTab=active
+              - generic [ref=f1e115]: Active
+              - paragraph [ref=f1e116]: "0"
+              - paragraph [ref=f1e118]:
+                - strong [ref=f1e119]: 0%
+                - text: of members
+              - paragraph [ref=f1e120]: Effective participants
+            - link "Waiting 0 0% of members 0 effective within 30 days" [ref=f1e121] [cursor=pointer]:
+              - /url: http://colisap.test/admin/members?activeTab=waiting
+              - generic [ref=f1e128]: Waiting
+              - paragraph [ref=f1e129]: "0"
+              - paragraph [ref=f1e131]:
+                - strong [ref=f1e132]: 0%
+                - text: of members
+              - paragraph [ref=f1e133]: 0 effective within 30 days
+            - link "Dormant 0 0% of members 0 near termination (30 days)" [ref=f1e134] [cursor=pointer]:
+              - /url: http://colisap.test/admin/members?activeTab=dormant
+              - generic [ref=f1e141]: Dormant
+              - paragraph [ref=f1e142]: "0"
+              - paragraph [ref=f1e144]:
+                - strong [ref=f1e145]: 0%
+                - text: of members
+              - paragraph [ref=f1e146]: 0 near termination (30 days)
+          - generic [ref=f1e151]:
+            - heading "New approvals" [level=3] [ref=f1e152]
+            - paragraph [ref=f1e153]: Members approved per month, last 12 months.
+          - generic [ref=f1e160]:
+            - generic [ref=f1e162]:
+              - heading "Action center" [level=2] [ref=f1e163]
+              - paragraph [ref=f1e164]: Items needing attention, most urgent first.
+            - paragraph [ref=f1e168]: All clear. Every participant is within policy.
+    - complementary [ref=f1e197]:
+      - generic [ref=f1e199]:
+        - link "COLISAP logo COLISAP Barbaza MPC" [ref=f1e201] [cursor=pointer]:
+          - /url: http://colisap.test/admin
+          - generic [ref=f1e203]:
+            - img "COLISAP logo" [ref=f1e205]
+            - generic [ref=f1e206]:
+              - generic [ref=f1e207]: COLISAP
+              - generic [ref=f1e208]: Barbaza MPC
+        - button "Collapse sidebar" [ref=f1e209] [cursor=pointer]
+      - navigation [ref=f1e213]:
+        - list [ref=f1e214]:
+          - listitem [ref=f1e215]:
+            - list [ref=f1e216]:
+              - listitem [ref=f1e217]:
+                - link "Dashboard" [ref=f1e218] [cursor=pointer]:
+                  - /url: http://colisap.test/admin
+          - listitem [ref=f1e222]:
+            - generic [ref=f1e223]: Members
+            - list [ref=f1e225]:
+              - listitem [ref=f1e226]:
+                - link "Members" [ref=f1e227] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/members
+              - listitem [ref=f1e231]:
+                - link "Member Transactions" [ref=f1e232] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/applications
+          - listitem [ref=f1e236]:
+            - generic [ref=f1e237]: Monitoring
+            - list [ref=f1e239]:
+              - listitem [ref=f1e240]:
+                - link "Monitoring" [ref=f1e241] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/monitoring
+          - listitem [ref=f1e246]:
+            - generic [ref=f1e247]: Data & Reports
+            - list [ref=f1e249]:
+              - listitem [ref=f1e250]:
+                - link "Reports" [ref=f1e251] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/reports
+              - listitem [ref=f1e255]:
+                - link "Import History" [ref=f1e256] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/import-batches
+              - listitem [ref=f1e260]:
+                - link "Import Approvals" [ref=f1e261] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/import-approvals
+          - listitem [ref=f1e265]:
+            - generic [ref=f1e266]: Administration
+            - list [ref=f1e268]:
+              - listitem [ref=f1e269]:
+                - link "Staff Accounts" [ref=f1e270] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/users
+              - listitem [ref=f1e274]:
+                - link "Roles & Permissions" [ref=f1e275] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/roles
+              - listitem [ref=f1e279]:
+                - link "Branches" [ref=f1e280] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/branches
+              - listitem [ref=f1e284]:
+                - link "Policy Settings" [ref=f1e285] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/policy-settings
+              - listitem [ref=f1e289]:
+                - link "Audit Logs" [ref=f1e290] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/audit-logs
+              - listitem [ref=f1e294]:
+                - link "Backups" [ref=f1e295] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/backups
+              - listitem [ref=f1e299]:
+                - link "Monitoring API" [ref=f1e300] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/monitoring-api-keys
+          - listitem [ref=f1e304]:
+            - generic [ref=f1e305]: Account
+            - list [ref=f1e307]:
+              - listitem [ref=f1e308]:
+                - link "My Account" [ref=f1e309] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/profile
+      - button "Logout" [ref=f1e315] [cursor=pointer]
+  - generic:
+    - status
+  - status [ref=f1e319] [cursor=pointer]:
+    - generic [ref=f1e321]:
+      - paragraph [ref=f1e327]:
+        - generic [aria-hidden] [ref=f1e328]: C
+        - generic [aria-hidden] [ref=f1e329]: O
+        - generic [aria-hidden] [ref=f1e330]: L
+        - generic [aria-hidden] [ref=f1e331]: I
+        - generic [aria-hidden] [ref=f1e332]: S
+        - generic [aria-hidden] [ref=f1e333]: A
+        - generic [aria-hidden] [ref=f1e334]: P
+      - paragraph [ref=f1e336]: Barbaza Multi-Purpose Cooperative
+      - paragraph [ref=f1e337]: Welcome back, BMPC

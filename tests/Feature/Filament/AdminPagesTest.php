@@ -13,7 +13,6 @@ use App\Filament\Resources\BranchResource;
 use App\Filament\Resources\ImportBatchResource;
 use App\Filament\Resources\MemberResource;
 use App\Filament\Resources\RoleResource;
-use App\Filament\Resources\UserResource;
 use App\Models\Application;
 use App\Models\AuditLog;
 use App\Models\Branch;
@@ -66,7 +65,6 @@ class AdminPagesTest extends TestCase
             'applications' => [ApplicationResource::class.'@index'],
             'import history' => [ImportBatchResource::class.'@index'],
             'branches' => [BranchResource::class.'@index'],
-            'users' => [UserResource::class.'@index'],
             'roles' => [RoleResource::class.'@index'],
             'audit logs' => [AuditLogResource::class.'@index'],
         ];

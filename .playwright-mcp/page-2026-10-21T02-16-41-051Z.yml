@@ -1,0 +1,220 @@
+- generic [ref=f3e1]:
+  - generic [ref=f3e2]:
+    - generic [ref=f3e3]:
+      - navigation [ref=f3e5]:
+        - generic [ref=f3e6]:
+          - generic "Wednesday, 21 October 2026" [ref=f3e7]: Wed, 21 Oct 2026
+          - generic [ref=f3e13]:
+            - generic [ref=f3e14]: Global search
+            - searchbox "Global search" [ref=f3e20]
+          - switch "Switch to dark mode" [ref=f3e21] [cursor=pointer]
+          - button "User menu" [ref=f3e34] [cursor=pointer]:
+            - img "Avatar of CUTIEPIE Super Admin" [ref=f3e35]
+      - main [ref=f3e36]:
+        - generic [ref=f3e38]:
+          - generic [ref=f3e39]:
+            - generic [ref=f3e40]:
+              - navigation [ref=f3e41]:
+                - list [ref=f3e42]:
+                  - listitem [ref=f3e43]:
+                    - link "Member Transactions" [ref=f3e44] [cursor=pointer]:
+                      - /url: http://colisap.test/admin/applications
+                  - listitem [ref=f3e45]:
+                    - generic [ref=f3e48]: List
+              - heading "Member Transactions" [level=1] [ref=f3e49]
+            - button "New transaction" [ref=f3e52] [cursor=pointer]
+          - generic [ref=f3e57]:
+            - generic [ref=f3e58]:
+              - generic [ref=f3e61]:
+                - generic [ref=f3e62]:
+                  - generic [ref=f3e63]: Search
+                  - searchbox "Search" [ref=f3e69]
+                - button "Filter 0" [ref=f3e72] [cursor=pointer]:
+                  - generic [ref=f3e73]: Filter
+                  - generic [ref=f3e76]: "0"
+                - button "Reset filters" [ref=f3e80] [cursor=pointer]
+              - heading "No member transactions" [level=4] [ref=f3e90]
+            - generic:
+              - generic:
+                - dialog:
+                  - generic [ref=f3e221]:
+                    - generic [ref=f3e222]:
+                      - button "Close" [ref=f3e224] [cursor=pointer]
+                      - generic [ref=f3e228]:
+                        - heading "New transaction" [level=2] [ref=f3e229]
+                        - paragraph [ref=f3e230]: Add a new or an already-active member, upgrade a member, or re-apply a returning member.
+                    - generic [ref=f3e232]:
+                      - generic [ref=f3e234]:
+                        - generic [ref=f3e237]:
+                          - heading "Transaction" [level=3] [ref=f3e238]
+                          - paragraph [ref=f3e239]: Choose what you are filing. New and active members are added to Members, and upgrades and re-applications take effect, only when the Administrator approves.
+                        - generic [ref=f3e242]:
+                          - generic [ref=f3e245]:
+                            - generic [ref=f3e248]:
+                              - text: Type of transaction
+                              - superscript [ref=f3e249]: "*"
+                            - generic [ref=f3e250]:
+                              - combobox "Type of transaction*" [active] [ref=f3e253]:
+                                - option "New member" [selected]
+                                - option "Active member"
+                                - option "Upgrade to 60K"
+                                - option "Re-application"
+                              - generic [ref=f3e254]: Someone joining COLISAP for the first time.
+                          - generic [ref=f3e257]:
+                            - generic [ref=f3e258]: Find BMPC member
+                            - generic [ref=f3e261]:
+                              - combobox [ref=f3e416]:
+                                - generic [ref=f3e417]: Type a name or Acct. Number
+                              - generic [ref=f3e266]: Pick the person to fill in their details from BMPC Members. Not on the list? Type the details below yourself.
+                          - generic [ref=f3e269]:
+                            - generic [ref=f3e272]:
+                              - text: Acct. Number
+                              - superscript [ref=f3e273]: "*"
+                            - generic [ref=f3e274]:
+                              - textbox "Acct. Number*" [ref=f3e277]
+                              - generic [ref=f3e278]: Savings account number — the member's unique ID. Leading zeros are kept.
+                          - generic [ref=f3e281]:
+                            - generic [ref=f3e284]:
+                              - text: Last name
+                              - superscript [ref=f3e285]: "*"
+                            - textbox "Last name*" [ref=f3e289]
+                          - generic [ref=f3e292]:
+                            - generic [ref=f3e295]:
+                              - text: First name
+                              - superscript [ref=f3e296]: "*"
+                            - textbox "First name*" [ref=f3e300]
+                          - generic [ref=f3e303]:
+                            - generic [ref=f3e304]: Middle name
+                            - textbox "Middle name" [ref=f3e310]
+                          - generic [ref=f3e313]:
+                            - generic [ref=f3e316]:
+                              - text: Branch
+                              - superscript [ref=f3e317]: "*"
+                            - combobox [ref=f3e420]:
+                              - generic [ref=f3e421]: Select an option
+                          - generic [ref=f3e325]:
+                            - generic [ref=f3e328]:
+                              - text: Birthdate
+                              - superscript [ref=f3e329]: "*"
+                            - generic [ref=f3e330]:
+                              - textbox "Birthdate*" [ref=f3e333]
+                              - generic [ref=f3e334]: Needed to check the age limit in the policy.
+                          - generic [ref=f3e337]:
+                            - generic [ref=f3e338]: Contact number
+                            - generic [ref=f3e341]:
+                              - textbox "Contact number" [ref=f3e344]
+                              - generic [ref=f3e345]: Optional.
+                          - generic [ref=f3e348]:
+                            - generic [ref=f3e351]:
+                              - text: Savings balance
+                              - superscript [ref=f3e352]: "*"
+                            - generic [ref=f3e353]:
+                              - generic [ref=f3e354]:
+                                - generic [ref=f3e355]: ₱
+                                - spinbutton "Savings balance*" [ref=f3e358]
+                              - generic [ref=f3e359]: Must be at least ₱500.00 for the 40K category. Recorded as the member's opening balance on approval.
+                      - generic [ref=f3e361]:
+                        - heading "Details" [level=3] [ref=f3e365]
+                        - generic [ref=f3e368]:
+                          - generic [ref=f3e371]:
+                            - generic [ref=f3e374]:
+                              - text: Application date
+                              - superscript [ref=f3e375]: "*"
+                            - textbox "Application date*" [ref=f3e379]: 2026-10-21
+                          - generic [ref=f3e382]:
+                            - generic [ref=f3e385]:
+                              - text: Benefit category
+                              - superscript [ref=f3e386]: "*"
+                            - combobox "Benefit category*" [ref=f3e390]:
+                              - option "Select an option"
+                              - option "40K" [selected]
+                              - option "60K"
+                          - generic [ref=f3e393]:
+                            - generic [ref=f3e394]: Status
+                            - generic [ref=f3e397]: Pending
+                          - generic [ref=f3e401]:
+                            - generic [ref=f3e402]: Remarks
+                            - textbox "Remarks" [ref=f3e409]
+                    - generic [ref=f3e411]:
+                      - button "Save transaction" [ref=f3e412] [cursor=pointer]
+                      - button "Cancel" [ref=f3e414] [cursor=pointer]
+    - complementary [ref=f3e91]:
+      - generic [ref=f3e93]:
+        - link "COLISAP logo COLISAP Barbaza MPC" [ref=f3e95] [cursor=pointer]:
+          - /url: http://colisap.test/admin
+          - generic [ref=f3e97]:
+            - img "COLISAP logo" [ref=f3e99]
+            - generic [ref=f3e100]:
+              - generic [ref=f3e101]: COLISAP
+              - generic [ref=f3e102]: Barbaza MPC
+        - button "Collapse sidebar" [ref=f3e103] [cursor=pointer]
+      - navigation [ref=f3e107]:
+        - list [ref=f3e108]:
+          - listitem [ref=f3e109]:
+            - list [ref=f3e110]:
+              - listitem [ref=f3e111]:
+                - link "Dashboard" [ref=f3e112] [cursor=pointer]:
+                  - /url: http://colisap.test/admin
+          - listitem [ref=f3e116]:
+            - generic [ref=f3e117]: Members
+            - list [ref=f3e119]:
+              - listitem [ref=f3e120]:
+                - link "Members" [ref=f3e121] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/members
+              - listitem [ref=f3e125]:
+                - link "BMPC Members" [ref=f3e126] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/bmpc-members
+              - listitem [ref=f3e130]:
+                - link "Member Transactions" [ref=f3e131] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/applications
+          - listitem [ref=f3e135]:
+            - generic [ref=f3e136]: Monitoring
+            - list [ref=f3e138]:
+              - listitem [ref=f3e139]:
+                - link "Monitoring" [ref=f3e140] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/monitoring
+          - listitem [ref=f3e145]:
+            - generic [ref=f3e146]: Data & Reports
+            - list [ref=f3e148]:
+              - listitem [ref=f3e149]:
+                - link "Reports" [ref=f3e150] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/reports
+              - listitem [ref=f3e154]:
+                - link "Import History" [ref=f3e155] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/import-batches
+              - listitem [ref=f3e159]:
+                - link "Import Approvals" [ref=f3e160] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/import-approvals
+          - listitem [ref=f3e164]:
+            - generic [ref=f3e165]: Administration
+            - list [ref=f3e167]:
+              - listitem [ref=f3e168]:
+                - link "Staff Accounts" [ref=f3e169] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/users
+              - listitem [ref=f3e173]:
+                - link "Roles & Permissions" [ref=f3e174] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/roles
+              - listitem [ref=f3e178]:
+                - link "Branches" [ref=f3e179] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/branches
+              - listitem [ref=f3e183]:
+                - link "Policy Settings" [ref=f3e184] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/policy-settings
+              - listitem [ref=f3e188]:
+                - link "Audit Logs" [ref=f3e189] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/audit-logs
+              - listitem [ref=f3e193]:
+                - link "System Usage" [ref=f3e194] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/system-usage
+              - listitem [ref=f3e198]:
+                - link "Monitoring API" [ref=f3e199] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/monitoring-api-keys
+          - listitem [ref=f3e203]:
+            - generic [ref=f3e204]: Account
+            - list [ref=f3e206]:
+              - listitem [ref=f3e207]:
+                - link "My Account" [ref=f3e208] [cursor=pointer]:
+                  - /url: http://colisap.test/admin/profile
+      - button "Logout" [ref=f3e214] [cursor=pointer]
+  - generic:
+    - status

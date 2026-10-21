@@ -5,6 +5,7 @@ namespace Tests\Feature\Filament;
 use App\Filament\Pages\Auth\Login;
 use App\Filament\Pages\Reports;
 use App\Filament\Pages\SystemUsage;
+use App\Filament\Resources\UserResource;
 use App\Filament\Resources\UserResource\Pages\EditUser;
 use App\Models\AuditLog;
 use App\Models\Branch;
@@ -82,6 +83,7 @@ class SystemUsageTest extends TestCase
 
     public function test_signing_in_and_exporting_a_report_are_logged_for_the_usage_report(): void
     {
+        $this->grantToRole(Permissions::CRS, 'reports.view');
         $user = User::factory()->create(['email' => 'officer@bmpc.coop', 'password' => 'secret-pass-1', 'is_active' => true])->assignRole(Permissions::CRS);
 
         Livewire::test(Login::class)
@@ -95,14 +97,6 @@ class SystemUsageTest extends TestCase
             [['login', 'Sign-in'], ['report_exported', 'Reports']],
             AuditLog::where('user_id', $user->id)->orderBy('id')->get()->map(fn (AuditLog $log) => [$log->action, $log->module])->all(),
         );
-    }
-
-    private function actingAsDeveloper(): User
-    {
-        $developer = User::factory()->create(['is_active' => true, 'is_developer' => true])->assignRole(Permissions::ADMIN);
-        $this->actingAs($developer);
-
-        return $developer;
     }
 
     public function test_a_developer_account_sees_the_usage_page_and_downloads_it_as_a_pdf(): void
@@ -167,9 +161,7 @@ class SystemUsageTest extends TestCase
         $officer = $this->staff('Branch Officer');
         $this->actingAsRole(Permissions::ADMIN);
 
-        Livewire::test(EditUser::class, ['record' => $officer->getRouteKey()])
-            ->assertFormFieldIsHidden('is_developer')
-            ->assertFormFieldIsHidden('in_usage_report');
+        $this->get(UserResource::getUrl('edit', ['record' => $officer]))->assertForbidden();
 
         $this->actingAsDeveloper();
 

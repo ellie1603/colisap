@@ -2,13 +2,14 @@
 
 namespace App\Filament\Resources\RoleResource\Pages;
 
+use App\Filament\Concerns\DetectsConcurrentEdits;
 use App\Filament\Concerns\ReturnsToPreviousPage;
 use App\Filament\Resources\RoleResource;
 use Filament\Resources\Pages\EditRecord;
 
 class EditRole extends EditRecord
 {
-    use ReturnsToPreviousPage;
+    use DetectsConcurrentEdits, ReturnsToPreviousPage;
 
     protected static string $resource = RoleResource::class;
 
@@ -36,6 +37,8 @@ class EditRole extends EditRecord
 
     protected function afterSave(): void
     {
+        $this->rememberCurrentVersion();
+
         RoleResource::syncAndAudit($this->record, $this->permissions);
     }
 }

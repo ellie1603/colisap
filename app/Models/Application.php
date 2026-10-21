@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Exceptions\ApplicationAlreadyDecided;
 use App\Models\Concerns\Auditable;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -10,6 +12,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 /**
  * COLISAP application or re-application. An application stands on its own: it carries the applicant's
@@ -25,9 +29,28 @@ class Application extends Model
      * @var array<string, string>
      */
     public const TYPES = [
-        'new' => 'New application',
+        'new' => 'New member',
+        'active' => 'Active member',
+        'upgrade' => 'Upgrade to higher category',
         'reapplication' => 'Re-application',
     ];
+
+    /**
+     * Kinds of request filed for someone who is not a member of this system yet (their details are typed in).
+     *
+     * @var list<string>
+     */
+    public const FOR_NEW_PEOPLE = ['new', 'active'];
+
+    /**
+     * The request types as shown to staff; the upgrade is named after the higher category (e.g. "Upgrade to 60K").
+     *
+     * @return array<string, string>
+     */
+    public static function typeOptions(): array
+    {
+        return [...self::TYPES, 'upgrade' => 'Upgrade to '.Member::higherCategoryLabel()];
+    }
 
     /**
      * @var array<string, string>
@@ -60,6 +83,8 @@ class Application extends Model
         'balance_verified',
         'fee_amount',
         'fee_paid',
+        'or_number',
+        'member_since',
         'previous_status',
         'remarks',
         'created_by',
@@ -75,6 +100,7 @@ class Application extends Model
         'balance_verified' => 'boolean',
         'fee_amount' => 'decimal:2',
         'fee_paid' => 'boolean',
+        'member_since' => 'date',
     ];
 
     protected static function booted(): void
@@ -135,12 +161,16 @@ class Application extends Model
             return "The {$label} for this Acct. Number was rejected. Reopen that application instead of filing a second one.";
         }
 
-        if ($type === 'new' && $member !== null) {
+        if (in_array($type, self::FOR_NEW_PEOPLE, true) && $member !== null) {
             return "This Acct. Number already belongs to a member ({$member->account_name}). If their participation has ended, file a re-application instead.";
         }
 
+        if ($type === 'upgrade') {
+            return self::upgradeProblem($member);
+        }
+
         if ($type === 'reapplication' && $member === null) {
-            return 'No member has this Acct. Number. File a new application instead.';
+            return 'No member has this Acct. Number. Choose the "New member" transaction instead.';
         }
 
         if ($type === 'reapplication' && ! in_array($member->status, ['terminated', 'withdrawn'], true)) {
@@ -189,18 +219,17 @@ class Application extends Model
     }
 
     /**
-     * Qualification checklist items still unchecked (Policy II, X).
-     *
-     * @return list<string>
+     * Why this member cannot upgrade to the higher category, or null when they can (Policy III.3).
      */
-    public function missingRequirements(): array
+    public static function upgradeProblem(?Member $member): ?string
     {
-        return array_values(array_filter([
-            $this->good_health_declared ? null : 'Good-health declaration',
-            $this->age_verified ? null : 'Age verification (not over 59 years 6 months)',
-            $this->balance_verified ? null : 'Maintaining balance verified',
-            $this->type === 'reapplication' && ! $this->fee_paid ? 'Re-application fee paid' : null,
-        ]));
+        return match (true) {
+            $member === null => 'No member has this Acct. Number.',
+            $member->status !== 'active' => 'Only an active member can upgrade. This member is '.strtolower(Member::STATUSES[$member->status] ?? $member->status).'.',
+            $member->category !== Member::BASIC_CATEGORY => 'This member is already in the '.Member::higherCategoryLabel().' category.',
+            $member->category_upgrade_requested_at !== null => 'This member already asked to upgrade on '.$member->category_upgrade_requested_at->toFormattedDateString().'.',
+            default => null,
+        };
     }
 
     // ---------------------------------------------------------------- Decisions
@@ -212,31 +241,84 @@ class Application extends Model
     public function approve(?Carbon $approvedAt = null): void
     {
         $approvedAt ??= Carbon::today();
-        $member = $this->member ?? $this->createMemberFromApplicant($approvedAt);
+
+        if ($this->type === 'upgrade') {
+            $this->decide('pending', fn () => $this->approveUpgrade($approvedAt));
+
+            return;
+        }
+
+        // An active member joins this system with the date they were first approved, so their status is worked
+        // out from that date (Active once the waiting period from then has passed) instead of starting again.
+        $membershipDate = $this->type === 'active' && $this->member_since ? $this->member_since->copy() : $approvedAt;
+
+        $this->decide('pending', function () use ($approvedAt, $membershipDate) {
+            $member = $this->member ?? $this->createMemberFromApplicant($approvedAt);
+
+            $this->update([
+                'member_id' => $member->id,
+                'status' => 'approved',
+                'approved_at' => $approvedAt,
+                'approved_by' => Auth::id(),
+            ]);
+
+            $member->withChangeReason(self::TYPES[$this->type].' approved')->fill([
+                'application_date' => $this->application_date,
+                'approval_date' => $membershipDate,
+                'category' => $this->category,
+                'status' => 'waiting',
+                'activated_at' => null,
+                'dormant_since' => null,
+                'terminated_at' => null,
+                'termination_reason' => null,
+                'withdrawn_at' => null,
+                'withdrawal_reason' => null,
+                'category_upgrade_requested_at' => null,
+            ])->save();
+
+            $member->refreshStatus();
+            $this->setRelation('member', $member);
+        });
+    }
+
+    /**
+     * An upgrade request approved: the member's 90-day upgrade waiting period starts from the request date.
+     * Their status and category stay as they are until the upgrade itself is applied from Monitoring.
+     */
+    private function approveUpgrade(Carbon $approvedAt): void
+    {
+        $member = $this->member;
+
+        if ($problem = self::upgradeProblem($member)) {
+            throw new RuntimeException($problem);
+        }
+
+        $member->withChangeReason('Upgrade request approved')->requestCategoryUpgrade($this->application_date ?? $approvedAt);
 
         $this->update([
-            'member_id' => $member->id,
             'status' => 'approved',
             'approved_at' => $approvedAt,
             'approved_by' => Auth::id(),
         ]);
+    }
 
-        $member->withChangeReason(self::TYPES[$this->type].' approved')->fill([
-            'application_date' => $this->application_date,
-            'approval_date' => $approvedAt,
-            'category' => $this->category,
-            'status' => 'waiting',
-            'activated_at' => null,
-            'dormant_since' => null,
-            'terminated_at' => null,
-            'termination_reason' => null,
-            'withdrawn_at' => null,
-            'withdrawal_reason' => null,
-            'category_upgrade_requested_at' => null,
-        ])->save();
+    /**
+     * Runs a decision all-or-nothing, with this application's row locked and its status re-checked, so two
+     * staff deciding at the same moment cannot both succeed (e.g. one approves while the other rejects).
+     *
+     * @throws ApplicationAlreadyDecided
+     */
+    private function decide(string $expectedStatus, Closure $decision): void
+    {
+        DB::transaction(function () use ($expectedStatus, $decision) {
+            $current = static::query()->withoutGlobalScopes()->whereKey($this->getKey())->lockForUpdate()->value('status');
 
-        $member->refreshStatus();
-        $this->setRelation('member', $member);
+            if ($current !== $expectedStatus) {
+                throw ApplicationAlreadyDecided::nowStatus(self::STATUSES[$current] ?? (string) $current);
+            }
+
+            $decision();
+        });
     }
 
     /**
@@ -273,12 +355,12 @@ class Application extends Model
 
     public function reject(string $reason): void
     {
-        $this->update([
+        $this->decide('pending', fn () => $this->update([
             'status' => 'rejected',
             'rejection_reason' => $reason,
             'approved_by' => Auth::id(),
             'approved_at' => Carbon::today(),
-        ]);
+        ]));
     }
 
     /**
@@ -286,12 +368,12 @@ class Application extends Model
      */
     public function reopen(): void
     {
-        $this->update([
+        $this->decide('rejected', fn () => $this->update([
             'status' => 'pending',
             'rejection_reason' => null,
             'approved_by' => null,
             'approved_at' => null,
-        ]);
+        ]));
     }
 
     // ---------------------------------------------------------------- Relationships

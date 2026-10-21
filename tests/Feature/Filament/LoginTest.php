@@ -57,6 +57,14 @@ class LoginTest extends TestCase
             ->assertDontSee('fonts.googleapis.com', escape: false);
     }
 
+    public function test_an_https_page_never_links_assets_over_plain_http(): void
+    {
+        $html = $this->get('https://colisap.test/admin/login')->assertOk()->getContent();
+
+        preg_match_all('/(?:href|src)="(http:\/\/[^"]+)"/', $html, $insecure);
+        $this->assertSame([], $insecure[1], 'Browsers block http:// stylesheets and scripts on an https:// page.');
+    }
+
     public function test_wrong_password_does_not_sign_in_or_queue_the_splash(): void
     {
         $this->makeUser();
@@ -118,5 +126,23 @@ class LoginTest extends TestCase
             Login::MAX_ATTEMPTS_PER_ACCOUNT,
             RateLimiter::remaining('colisap-login:account:staff@example.com|127.0.0.1', Login::MAX_ATTEMPTS_PER_ACCOUNT),
         );
+    }
+
+    public function test_a_web_browser_is_offered_the_windows_app_download_next_to_signing_in(): void
+    {
+        $this->get('/admin/login')
+            ->assertOk()
+            ->assertSee('or use the desktop app')
+            ->assertSee('COLISAP for Windows')
+            ->assertSee(asset(Login::DESKTOP_APP_FILE), escape: false);
+    }
+
+    public function test_the_desktop_app_itself_is_not_offered_its_own_download(): void
+    {
+        $this->withHeader('User-Agent', 'Mozilla/5.0 Edg/141.0 COLISAP-Desktop/1.2.0.0')
+            ->get('/admin/login')
+            ->assertOk()
+            ->assertSee('Welcome back')
+            ->assertDontSee('COLISAP for Windows');
     }
 }
