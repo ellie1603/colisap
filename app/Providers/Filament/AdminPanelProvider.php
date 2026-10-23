@@ -72,7 +72,7 @@ class AdminPanelProvider extends PanelProvider
             ->renderHook(PanelsRenderHook::GLOBAL_SEARCH_AFTER, fn (): View => view('filament.theme-toggle'))
             ->renderHook(PanelsRenderHook::SIDEBAR_FOOTER, fn (): View => view('filament.sidebar-footer'))
             ->renderHook(TablesRenderHook::TOOLBAR_TOGGLE_COLUMN_TRIGGER_BEFORE, fn (): View => view('filament.table-reset-filters'))
-            ->renderHook(PanelsRenderHook::HEAD_END, fn () => new HtmlString('<script src="'.e(asset('js/colisap.js')).'?v=8"></script>'))
+            ->renderHook(PanelsRenderHook::HEAD_END, fn () => new HtmlString('<script src="'.e(asset('js/colisap.js')).'?v=9"></script>'))
             ->renderHook(PanelsRenderHook::BODY_END, fn (): string|View => session(Login::SPLASH_SESSION_KEY) && auth()->check()
                 ? view('filament.splash', ['userName' => auth()->user()->name])
                 : '')

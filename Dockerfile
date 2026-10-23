@@ -20,11 +20,17 @@ RUN composer install \
 ############################################
 # Application image
 ############################################
-FROM serversideup/php:8.3-fpm-nginx AS app
+# Pinned to a patch release so a rebuild can never reuse an older cached image. 8.3.36 (21 Oct 2026) fixes the
+# critical remote-code-execution flaws CVE-2026-109618 and CVE-2026-109619; raise it with each PHP security release.
+FROM serversideup/php:8.3.36-fpm-nginx AS app
 
 USER root
 
 RUN install-php-extensions intl gd bcmath exif
+
+# Defence in depth for CVE-2026-109619: COLISAP never uses session upload progress, so it is switched off
+# before any request is parsed (php.net advisory, 21 Oct 2026).
+RUN printf 'session.upload_progress.enabled = 0\n' > /usr/local/etc/php/conf.d/zz-colisap-security.ini
 
 # Queue worker and scheduler run as supervised s6 services alongside nginx + php-fpm.
 # The services live in s6-rc.d; they are switched on from user-bundles.d, next to the image's own

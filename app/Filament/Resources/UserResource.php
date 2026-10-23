@@ -118,6 +118,9 @@ class UserResource extends Resource
             // Last sign-in from the sign-in log, in the same query, for the periodic access review.
             ->modifyQueryUsing(fn (Builder $query) => $query->with(['roles', 'branch'])->addSelect([
                 'last_sign_in_at' => AuditLog::query()
+                    // With only a few staff accounts MySQL otherwise picks the action index and reads every
+                    // sign-in of every user (measured 190 ms → 10 ms on a full-sized audit log).
+                    ->useIndex('audit_logs_user_action_created_index')
                     ->selectRaw('max(created_at)')
                     ->where('action', 'login')
                     ->whereColumn('audit_logs.user_id', 'users.id'),

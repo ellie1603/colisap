@@ -1,0 +1,227 @@
+- generic [active] [ref=f3e1]:
+  - generic [ref=f3e2]:
+    - generic [ref=f3e3]:
+      - navigation [ref=f3e5]:
+        - generic [ref=f3e6]:
+          - generic "Thursday, 22 October 2026" [ref=f3e7]: Thu, 22 Oct 2026
+          - generic [ref=f3e13]:
+            - generic [ref=f3e14]: Global search
+            - searchbox "Global search" [ref=f3e20]
+          - switch "Switch to dark mode" [ref=f3e21] [cursor=pointer]
+          - button "User menu" [ref=f3e34] [cursor=pointer]:
+            - img "Avatar of Perf Dev" [ref=f3e35]
+      - main [ref=f3e36]:
+        - generic [ref=f3e41]:
+          - generic [ref=f3e43]:
+            - generic [ref=f3e48]:
+              - generic [ref=f3e49]:
+                - paragraph [ref=f3e50]: Barbaza Multi-Purpose Cooperative · Coop Life Savings Program
+                - heading "Good afternoon, Perf" [level=1] [ref=f3e52]
+                - paragraph [ref=f3e53]: COLISAP portfolio overview as of Thursday, 22 October 2026. Key figures refresh automatically every minute.
+              - navigation "Quick actions" [ref=f3e54]:
+                - link "New transaction" [ref=f3e55] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/applications?action=create
+                - link "Import Excel" [ref=f3e58] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/members/import
+                - link "Monitoring" [ref=f3e62] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/monitoring
+            - generic [ref=f3e66]:
+              - generic [ref=f3e67]: Policy in force
+              - list [ref=f3e68]:
+                - listitem [ref=f3e69]: 180-day waiting period
+                - listitem [ref=f3e70]: 90-day 60K upgrade
+                - listitem [ref=f3e71]: Min. balance ₱500 / ₱2,000
+                - listitem [ref=f3e72]: 15-day replenishment
+                - listitem [ref=f3e73]: 3-month dormancy
+          - generic [ref=f3e75]:
+            - link "Total members 0 All COLISAP records across every status Member status distribution Waiting 2,082 Active 10,172 Dormant 1,717 Deceased 680 Terminated 1,346 Withdrawn 1,003" [ref=f3e76] [cursor=pointer]:
+              - /url: http://127.0.0.1:8099/admin/members
+              - generic [ref=f3e77]: Total members
+              - paragraph [ref=f3e81]: "0"
+              - paragraph [ref=f3e82]: All COLISAP records across every status
+              - img "Member status distribution":
+                - 'generic "Waiting: 2,082"'
+                - 'generic "Active: 10,172"'
+                - 'generic "Dormant: 1,717"'
+                - 'generic "Deceased: 680"'
+                - 'generic "Terminated: 1,346"'
+                - 'generic "Withdrawn: 1,003"'
+              - list [ref=f3e83]:
+                - listitem [ref=f3e84]:
+                  - generic [ref=f3e86]: Waiting
+                  - generic [ref=f3e87]: 2,082
+                - listitem [ref=f3e88]:
+                  - generic [ref=f3e90]: Active
+                  - generic [ref=f3e91]: 10,172
+                - listitem [ref=f3e92]:
+                  - generic [ref=f3e94]: Dormant
+                  - generic [ref=f3e95]: 1,717
+                - listitem [ref=f3e96]:
+                  - generic [ref=f3e98]: Deceased
+                  - generic [ref=f3e99]: "680"
+                - listitem [ref=f3e100]:
+                  - generic [ref=f3e102]: Terminated
+                  - generic [ref=f3e103]: 1,346
+                - listitem [ref=f3e104]:
+                  - generic [ref=f3e106]: Withdrawn
+                  - generic [ref=f3e107]: 1,003
+            - link "Active 0 60% of members Effective participants" [ref=f3e108] [cursor=pointer]:
+              - /url: http://127.0.0.1:8099/admin/members?activeTab=active
+              - generic [ref=f3e115]: Active
+              - paragraph [ref=f3e116]: "0"
+              - paragraph [ref=f3e118]:
+                - strong [ref=f3e119]: 60%
+                - text: of members
+              - paragraph [ref=f3e120]: Effective participants
+            - link "Waiting 0 12% of members 16 effective within 30 days" [ref=f3e121] [cursor=pointer]:
+              - /url: http://127.0.0.1:8099/admin/members?activeTab=waiting
+              - generic [ref=f3e128]: Waiting
+              - paragraph [ref=f3e129]: "0"
+              - paragraph [ref=f3e131]:
+                - strong [ref=f3e132]: 12%
+                - text: of members
+              - paragraph [ref=f3e133]: 16 effective within 30 days
+            - link "Dormant 0 10% of members 0 near termination (30 days)" [ref=f3e134] [cursor=pointer]:
+              - /url: http://127.0.0.1:8099/admin/members?activeTab=dormant
+              - generic [ref=f3e141]: Dormant
+              - paragraph [ref=f3e142]: "0"
+              - paragraph [ref=f3e144]:
+                - strong [ref=f3e145]: 10%
+                - text: of members
+              - paragraph [ref=f3e146]: 0 near termination (30 days)
+          - generic [ref=f3e151]:
+            - heading "New approvals" [level=3] [ref=f3e152]
+            - paragraph [ref=f3e153]: Members approved per month, last 12 months.
+          - generic [ref=f3e160]:
+            - generic [ref=f3e161]:
+              - generic [ref=f3e162]:
+                - heading "Action center" [level=2] [ref=f3e163]
+                - paragraph [ref=f3e164]: Items needing attention, most urgent first.
+              - generic [ref=f3e165]: "4"
+            - list [ref=f3e166]:
+              - listitem [ref=f3e167]:
+                - link "critical Replenishment deadline passed Open notices past their 15-day deadline (will be enforced on the next status run). 779" [ref=f3e168] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/monitoring?tab=replenishment
+                  - generic [ref=f3e170]:
+                    - generic [ref=f3e171]: critical
+                    - generic [ref=f3e172]: Replenishment deadline passed
+                    - generic [ref=f3e173]: Open notices past their 15-day deadline (will be enforced on the next status run).
+                  - generic [ref=f3e174]: "779"
+              - listitem [ref=f3e175]:
+                - link "warning Replenishment deadline approaching Open notices due within 5 days. 86" [ref=f3e176] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/monitoring?tab=replenishment
+                  - generic [ref=f3e178]:
+                    - generic [ref=f3e179]: warning
+                    - generic [ref=f3e180]: Replenishment deadline approaching
+                    - generic [ref=f3e181]: Open notices due within 5 days.
+                  - generic [ref=f3e182]: "86"
+              - listitem [ref=f3e183]:
+                - link "warning Savings below minimum Participating members below their maintaining balance. 138" [ref=f3e184] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/monitoring?tab=replenishment
+                  - generic [ref=f3e186]:
+                    - generic [ref=f3e187]: warning
+                    - generic [ref=f3e188]: Savings below minimum
+                    - generic [ref=f3e189]: Participating members below their maintaining balance.
+                  - generic [ref=f3e190]: "138"
+              - listitem [ref=f3e191]:
+                - link "info Waiting period ending soon Members becoming effective within 30 days. 16" [ref=f3e192] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/monitoring?tab=effectivity
+                  - generic [ref=f3e194]:
+                    - generic [ref=f3e195]: info
+                    - generic [ref=f3e196]: Waiting period ending soon
+                    - generic [ref=f3e197]: Members becoming effective within 30 days.
+                  - generic [ref=f3e198]: "16"
+    - complementary [ref=f3e227]:
+      - generic [ref=f3e229]:
+        - link "COLISAP logo COLISAP Barbaza MPC" [ref=f3e231] [cursor=pointer]:
+          - /url: http://127.0.0.1:8099/admin
+          - generic [ref=f3e233]:
+            - img "COLISAP logo" [ref=f3e235]
+            - generic [ref=f3e236]:
+              - generic [ref=f3e237]: COLISAP
+              - generic [ref=f3e238]: Barbaza MPC
+        - button "Collapse sidebar" [ref=f3e239] [cursor=pointer]
+      - navigation [ref=f3e243]:
+        - list [ref=f3e244]:
+          - listitem [ref=f3e245]:
+            - list [ref=f3e246]:
+              - listitem [ref=f3e247]:
+                - link "Dashboard" [ref=f3e248] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin
+          - listitem [ref=f3e252]:
+            - generic [ref=f3e253]: Members
+            - list [ref=f3e255]:
+              - listitem [ref=f3e256]:
+                - link "Members" [ref=f3e257] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/members
+              - listitem [ref=f3e261]:
+                - link "BMPC Members" [ref=f3e262] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/bmpc-members
+              - listitem [ref=f3e266]:
+                - link "Member Transactions 768" [ref=f3e267] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/applications
+                  - generic [ref=f3e270]: Member Transactions
+                  - generic [ref=f3e271]: "768"
+          - listitem [ref=f3e275]:
+            - generic [ref=f3e276]: Monitoring
+            - list [ref=f3e278]:
+              - listitem [ref=f3e279]:
+                - link "Monitoring" [ref=f3e280] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/monitoring
+          - listitem [ref=f3e285]:
+            - generic [ref=f3e286]: Data & Reports
+            - list [ref=f3e288]:
+              - listitem [ref=f3e289]:
+                - link "Reports" [ref=f3e290] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/reports
+              - listitem [ref=f3e294]:
+                - link "Import History" [ref=f3e295] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/import-batches
+              - listitem [ref=f3e299]:
+                - link "Import Approvals" [ref=f3e300] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/import-approvals
+          - listitem [ref=f3e304]:
+            - generic [ref=f3e305]: Administration
+            - list [ref=f3e307]:
+              - listitem [ref=f3e308]:
+                - link "Staff Accounts" [ref=f3e309] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/users
+              - listitem [ref=f3e313]:
+                - link "Roles & Permissions" [ref=f3e314] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/roles
+              - listitem [ref=f3e318]:
+                - link "Branches" [ref=f3e319] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/branches
+              - listitem [ref=f3e323]:
+                - link "Policy Settings" [ref=f3e324] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/policy-settings
+              - listitem [ref=f3e328]:
+                - link "Audit Logs" [ref=f3e329] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/audit-logs
+              - listitem [ref=f3e333]:
+                - link "System Usage" [ref=f3e334] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/system-usage
+              - listitem [ref=f3e338]:
+                - link "Monitoring API" [ref=f3e339] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/monitoring-api-keys
+          - listitem [ref=f3e343]:
+            - generic [ref=f3e344]: Account
+            - list [ref=f3e346]:
+              - listitem [ref=f3e347]:
+                - link "My Account" [ref=f3e348] [cursor=pointer]:
+                  - /url: http://127.0.0.1:8099/admin/profile
+      - button "Logout" [ref=f3e354] [cursor=pointer]
+  - generic:
+    - status
+  - status [ref=f3e358] [cursor=pointer]:
+    - generic [ref=f3e360]:
+      - paragraph [ref=f3e366]:
+        - generic [aria-hidden] [ref=f3e367]: C
+        - generic [aria-hidden] [ref=f3e368]: O
+        - generic [aria-hidden] [ref=f3e369]: L
+        - generic [aria-hidden] [ref=f3e370]: I
+        - generic [aria-hidden] [ref=f3e371]: S
+        - generic [aria-hidden] [ref=f3e372]: A
+        - generic [aria-hidden] [ref=f3e373]: P
+      - paragraph [ref=f3e375]: Barbaza Multi-Purpose Cooperative
+      - paragraph [ref=f3e376]: Welcome back, Perf

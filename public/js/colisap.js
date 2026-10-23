@@ -11,6 +11,19 @@
 
     window.colisapIsLite = isLite;
 
+    // Menu links start loading their page once the pointer rests on them (Livewire's wire:navigate.hover), so
+    // by the click the page is usually already here. Renamed before Livewire reads the links: on first load
+    // (this file runs before Livewire's own DOMContentLoaded handler) and right after each page swap.
+    // Table rows are left alone, so moving across a list does not fetch every row.
+    const PREFETCHED_LINKS = '.fi-sidebar a[wire\\:navigate], .fi-topbar a[wire\\:navigate], .fi-breadcrumbs a[wire\\:navigate]';
+    const prefetchOnHover = () => document.querySelectorAll(PREFETCHED_LINKS).forEach((link) => {
+        link.removeAttribute('wire:navigate');
+        link.setAttribute('wire:navigate.hover', '');
+    });
+
+    document.addEventListener('DOMContentLoaded', prefetchOnHover);
+    document.addEventListener('livewire:navigating', (event) => event.detail?.onSwap?.(prefetchOnHover));
+
     const formatter = new Intl.NumberFormat('en-US');
 
     window.colisapWhenSplashDone = (callback) => {

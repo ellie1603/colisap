@@ -1,0 +1,55 @@
+- generic [ref=f2e1]:
+  - main [ref=f2e4]:
+    - generic [ref=f2e5]:
+      - complementary [aria-hidden] [ref=f2e6]:
+        - generic [ref=f2e14]:
+          - generic [ref=f2e16]:
+            - paragraph [ref=f2e17]: Barbaza Multi-Purpose Cooperative
+            - heading [level=2] [ref=f2e18]: COLISAP member monitoring, made clear.
+            - paragraph [ref=f2e19]: Import member records, track account status, and generate reports from one dashboard.
+          - list [ref=f2e20]:
+            - listitem [ref=f2e21]: Excel member import
+            - listitem [ref=f2e23]: Account status monitoring
+            - listitem [ref=f2e25]: Ready-to-print reports
+      - generic [ref=f2e28]:
+        - generic [ref=f2e29]:
+          - heading "Welcome back" [level=1] [ref=f2e31]
+          - paragraph [ref=f2e32]: Sign in to continue to the COLISAP monitoring system.
+        - generic [ref=f2e34]:
+          - generic [ref=f2e35]:
+            - generic [ref=f2e38]:
+              - generic [ref=f2e41]:
+                - text: Email address
+                - superscript [ref=f2e42]: "*"
+              - textbox "Email address*" [active] [ref=f2e46]
+            - generic [ref=f2e49]:
+              - generic [ref=f2e52]:
+                - text: Password
+                - superscript [ref=f2e53]: "*"
+              - generic [ref=f2e55]:
+                - textbox "Password*" [ref=f2e57]
+                - button "Show password" [ref=f2e60] [cursor=pointer]
+            - generic [ref=f2e69]:
+              - checkbox "Remember me" [ref=f2e70]
+              - generic [ref=f2e71]: Remember me
+          - button "Sign in" [ref=f2e74] [cursor=pointer]
+        - generic [ref=f2e77]:
+          - generic [ref=f2e79]: or use the desktop app
+          - generic [ref=f2e80]:
+            - link "COLISAP for Windows Its own window and desktop icon · updates itself Windows 10/11 · 1.0 MB · v1.2 Download" [ref=f2e81] [cursor=pointer]:
+              - /url: http://127.0.0.1:8099/downloads/COLISAP.exe
+              - generic [ref=f2e83]:
+                - generic [ref=f2e84]: COLISAP for Windows
+                - generic [ref=f2e85]: Its own window and desktop icon · updates itself
+                - generic [ref=f2e86]: Windows 10/11 · 1.0 MB · v1.2
+              - generic [ref=f2e87]: Download
+            - button "Close — don't show the desktop app again" [ref=f2e90] [cursor=pointer]
+          - paragraph [ref=f2e93]:
+            - text: "First time opening it, Windows may say “Windows protected your PC”: choose"
+            - strong [ref=f2e94]: More info
+            - text: →
+            - strong [ref=f2e95]: Run anyway
+            - text: .
+        - paragraph [ref=f2e96]: © 2026 Barbaza MPC · Authorized personnel only
+  - generic:
+    - status
