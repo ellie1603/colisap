@@ -4,6 +4,7 @@ namespace App\Services\Masterlist;
 
 use App\Models\BmpcMember;
 use App\Models\Branch;
+use App\Models\ImportBatch;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\DB;
  * Reads the coop's Excel list of every Barbaza MPC member into BMPC Members, straight away (no approval).
  * Every sheet with an account number (or CIF Key) and a name column is read; all other columns are ignored.
  * Members already on the list are matched by account number and updated; a blank cell never erases a value.
+ * Each upload is kept in Import History, and new members remember it so deleting the upload removes them again.
  */
 class BmpcMemberImportService
 {
@@ -30,12 +32,12 @@ class BmpcMemberImportService
      *
      * @return array{added: int, updated: int, skipped: int, other_branch: int, sheets: int}
      */
-    public function import(string $path): array
+    public function import(string $path, ?int $importBatchId = null): array
     {
         $summary = self::emptySummary();
 
         foreach ($this->sheets($path) as $sheet) {
-            $this->importSheet($path, $sheet, $summary);
+            $this->importSheet($path, $sheet, $summary, $importBatchId);
         }
 
         return $summary;
@@ -109,8 +111,9 @@ class BmpcMemberImportService
      *
      * @param  array{index: int, name: string, header_row: int, columns: array<string, int>, branch_id: ?int, branch_column?: ?int, contact_columns?: list<int>}  $sheet
      * @param  array{added: int, updated: int, skipped: int, other_branch: int, sheets: int}  $summary
+     * @param  ?int  $importBatchId  the Import History entry new members are recorded against
      */
-    public function importSheet(string $path, array $sheet, array &$summary): void
+    public function importSheet(string $path, array $sheet, array &$summary, ?int $importBatchId = null): void
     {
         $homeBranchId = Branch::restrictedId();
         $branchesByCode = Branch::query()->whereNotNull('code')->pluck('id', 'code')->all();
@@ -163,12 +166,12 @@ class BmpcMemberImportService
             ];
 
             if (count($pending) >= self::CHUNK) {
-                $this->save($pending, $summary);
+                $this->save($pending, $summary, $importBatchId);
                 $pending = [];
             }
         }
 
-        $this->save($pending, $summary);
+        $this->save($pending, $summary, $importBatchId);
     }
 
     /**
@@ -177,7 +180,7 @@ class BmpcMemberImportService
      * @param  array<string, array<string, mixed>>  $rows  keyed by account number
      * @param  array{added: int, updated: int, skipped: int, other_branch: int, sheets: int}  $summary
      */
-    private function save(array $rows, array &$summary): void
+    private function save(array $rows, array &$summary, ?int $importBatchId): void
     {
         if ($rows === []) {
             return;
@@ -192,6 +195,8 @@ class BmpcMemberImportService
                 $row[$field] ??= $current?->{$field};
             }
 
+            // Only a member this upload adds belongs to it; one already on file keeps the upload that added it.
+            $row['import_batch_id'] = $current === null ? $importBatchId : $current->import_batch_id;
             $row['imported_by'] = Auth::id();
             $rows[$accountNo] = $row;
             $current === null ? $summary['added']++ : $summary['updated']++;
@@ -202,5 +207,67 @@ class BmpcMemberImportService
             ['account_no'],
             [...self::FIELDS, 'imported_by', 'updated_at'],
         );
+    }
+
+    /**
+     * Start the Import History entry for an uploaded member list.
+     *
+     * @param  list<array{name: string}>  $sheets
+     */
+    public function startBatch(string $fileName, array $sheets): ImportBatch
+    {
+        return ImportBatch::create([
+            'type' => 'bmpc_members',
+            'file_name' => $fileName,
+            'as_of_date' => now(),
+            'status' => 'importing',
+            'sheets' => array_map(fn (array $sheet) => ['name' => $sheet['name'], 'include' => true], $sheets),
+            'uploaded_by' => Auth::id(),
+        ]);
+    }
+
+    /**
+     * Record the outcome on the Import History entry.
+     *
+     * @param  array{added: int, updated: int, skipped: int, other_branch: int, sheets: int}  $summary
+     */
+    public function finishBatch(ImportBatch $batch, array $summary, ?string $errorMessage = null): void
+    {
+        $batch->update([
+            'status' => $errorMessage === null ? 'completed' : 'failed',
+            'total_rows' => $summary['added'] + $summary['updated'] + $summary['skipped'] + $summary['other_branch'],
+            'new_rows' => $summary['added'],
+            'update_rows' => $summary['updated'],
+            'invalid_rows' => $summary['skipped'],
+            'processed_rows' => $summary['added'] + $summary['updated'],
+            'created_count' => $summary['added'],
+            'updated_count' => $summary['updated'],
+            'error_message' => $errorMessage,
+            'completed_at' => now(),
+        ]);
+    }
+
+    /**
+     * How many BMPC members deleting this upload would remove.
+     */
+    public function importedDataCount(ImportBatch $batch): int
+    {
+        return BmpcMember::query()->withoutGlobalScopes()->where('import_batch_id', $batch->id)->count();
+    }
+
+    /**
+     * Undo one uploaded member list: permanently delete the BMPC members it added, then remove the upload from
+     * Import History. Details it updated on members that were already on file are not rolled back.
+     */
+    public function deleteImportedData(ImportBatch $batch): int
+    {
+        return DB::transaction(function () use ($batch) {
+            $deleted = BmpcMember::query()->withoutGlobalScopes()->where('import_batch_id', $batch->id)->delete();
+
+            $batch->recordAudit('imported_data_deleted', ['file' => $batch->file_name, 'status' => $batch->status], ['bmpc_members' => $deleted], 'BMPC member import and the members it added were deleted from Import History');
+            $batch->delete();
+
+            return $deleted;
+        });
     }
 }

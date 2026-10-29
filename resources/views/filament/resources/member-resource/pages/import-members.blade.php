@@ -107,7 +107,7 @@
                 <x-slot name="heading">Confirm sheets, branches and columns</x-slot>
                 <x-slot name="description">
                     {{ $batch->file_name }} · as of {{ $batch->as_of_date->toFormattedDateString() }}.
-                    Sheets were matched to branches by name and columns by their headers — adjust anything that is wrong. Only ticked sheets are imported.
+                    Sheets were matched to branches by name (or by their Branch column) and columns by their headers — adjust anything that is wrong. Only ticked sheets are imported.
                     @if ($ownBranchName)
                         Your account is limited to the {{ $ownBranchName }} branch, so only its sheet is shown and imported.
                     @endif
@@ -118,6 +118,7 @@
                         @continue(! in_array($position, $mappableSheets, true))
                         @php
                             $isContactList = \App\Services\Masterlist\WorkbookParser::isContactList($mapping[$position]['columns'] ?? []);
+                            $hasBranchColumn = filled($mapping[$position]['columns']['branch'] ?? null);
                         @endphp
                         <div wire:key="sheet-{{ $position }}" class="colisap-sheet">
                             <div class="colisap-sheet__header">
@@ -141,9 +142,9 @@
                                     </div>
                                 @elseif ($sheet['header_row'])
                                     <div class="colisap-sheet__branch">
-                                        <x-filament::input.wrapper :valid="! (($mapping[$position]['include'] ?? false) && empty($mapping[$position]['branch_id']))">
+                                        <x-filament::input.wrapper :valid="$hasBranchColumn || ! (($mapping[$position]['include'] ?? false) && empty($mapping[$position]['branch_id']))">
                                             <x-filament::input.select wire:model="mapping.{{ $position }}.branch_id" aria-label="Branch for {{ $sheet['name'] }}">
-                                                <option value="">Choose branch…</option>
+                                                <option value="">{{ $hasBranchColumn ? 'From the Branch column' : 'Choose branch…' }}</option>
                                                 @foreach ($branches as $id => $name)
                                                     <option value="{{ $id }}">{{ $name }}</option>
                                                 @endforeach
@@ -168,7 +169,8 @@
                                             <label class="colisap-field">
                                                 {{ $label }}
                                                 <x-filament::input.wrapper>
-                                                    <x-filament::input.select wire:model="mapping.{{ $position }}.columns.{{ $field }}">
+                                                    {{-- Mapping the Branch column re-labels the sheet's branch choice straight away. --}}
+                                                    <x-filament::input.select wire:model="mapping.{{ $position }}.columns.{{ $field }}" :wire:change="$field === 'branch' ? '$refresh' : false">
                                                         <option value="">— not in file —</option>
                                                         @foreach ($sheet['headers'] as $column => $header)
                                                             <option value="{{ $column }}">{{ $header }}</option>

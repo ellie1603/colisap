@@ -4,9 +4,11 @@ namespace App\Filament\Widgets;
 
 use App\Services\Colisap\MonitoringService;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Contracts\View\View;
 
 /**
  * Shared look for dashboard charts: brand palette per status/segment. Charts load lazily and do not poll, to stay light on older PCs.
+ * Each lazy chart also carries #[Lazy(isolate: false)], so the charts on screen arrive together in one request instead of one each.
  */
 abstract class ColisapChart extends ChartWidget
 {
@@ -40,6 +42,21 @@ abstract class ColisapChart extends ChartWidget
     ];
 
     public const SERIES = [self::INDIGO, self::ORANGE, self::SKY, self::YELLOW, self::GREEN, '#8B5CF6', self::SLATE, self::ROSE];
+
+    /**
+     * Shown until the chart arrives: the real heading over a grey outline of the chart, the same height as the finished card.
+     */
+    public function placeholder(): View
+    {
+        return view('filament.widgets.chart-skeleton', [
+            'columnSpan' => $this->getColumnSpan(),
+            'columnStart' => $this->getColumnStart(),
+            'heading' => $this->getHeading(),
+            'description' => $this->getDescription(),
+            'isRadial' => $this->isRadial(),
+            'height' => $this->getMaxHeight() ?? '260px',
+        ]);
+    }
 
     protected function monitoring(): MonitoringService
     {

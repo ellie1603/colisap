@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\Auditable;
 use Database\Factories\BmpcMemberFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class BmpcMember extends Model
 {
     /** @use HasFactory<BmpcMemberFactory> */
-    use HasFactory;
+    use Auditable, HasFactory;
 
     protected $fillable = [
         'account_no',
@@ -30,6 +31,7 @@ class BmpcMember extends Model
         'contact_number',
         'address',
         'savings_balance',
+        'import_batch_id',
         'imported_by',
     ];
 
@@ -51,6 +53,14 @@ class BmpcMember extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    /**
+     * The upload that first added this member.
+     */
+    public function importBatch(): BelongsTo
+    {
+        return $this->belongsTo(ImportBatch::class);
     }
 
     /**

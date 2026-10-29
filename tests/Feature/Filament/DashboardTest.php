@@ -72,6 +72,18 @@ class DashboardTest extends TestCase
             ->assertSee('New approvals');
     }
 
+    public function test_lazy_charts_show_a_skeleton_with_their_real_heading_until_they_load(): void
+    {
+        $this->actingAsRole(Permissions::ADMIN);
+
+        $html = $this->get('/admin')->assertOk()->getContent();
+
+        $this->assertSame(7, substr_count($html, 'colisap-chart-skeleton'));
+        $this->assertStringContainsString('Status by branch', $html);
+        $this->assertStringContainsString('colisap-skel-donut', $html);
+        $this->assertStringNotContainsString('fi-loading-section', $html);
+    }
+
     public function test_crs_officer_dashboard_offers_new_application_and_import_but_no_monitoring_or_action_center(): void
     {
         $this->actingAsRole(Permissions::CRS);

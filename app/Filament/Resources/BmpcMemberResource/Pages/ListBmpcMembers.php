@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\BmpcMemberResource\Pages;
 
 use App\Filament\Resources\BmpcMemberResource;
+use App\Models\ImportBatch;
 use App\Services\Masterlist\BmpcMemberImportService;
 use Filament\Actions;
 use Filament\Forms;
@@ -14,7 +15,8 @@ use Throwable;
 
 /**
  * The BMPC member list with its Import button. A workbook is imported one sheet per request (the page polls
- * importNextSheet()), so a large member list never runs into a request time limit.
+ * importNextSheet()), so a large member list never runs into a request time limit. Every upload is logged in
+ * Import History, where the Administrator can delete it together with the members it added.
  */
 class ListBmpcMembers extends ListRecords
 {
@@ -41,6 +43,11 @@ class ListBmpcMembers extends ListRecords
     public int $importSheetCount = 0;
 
     /**
+     * The Import History entry of the running import.
+     */
+    public ?int $importBatchId = null;
+
+    /**
      * @var array{added: int, updated: int, skipped: int, other_branch: int, sheets: int}
      */
     public array $importSummary = [];
@@ -62,6 +69,7 @@ class ListBmpcMembers extends ListRecords
                         ->helperText('Excel (.xlsx), OpenDocument (.ods) or CSV. Every sheet is read.')
                         ->disk(self::DISK)
                         ->directory(self::DIRECTORY)
+                        ->storeFileNamesIn('original_name')
                         ->visibility('private')
                         ->acceptedFileTypes([
                             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -91,6 +99,7 @@ class ListBmpcMembers extends ListRecords
                         return;
                     }
 
+                    $this->importBatchId = app(BmpcMemberImportService::class)->startBatch($data['original_name'] ?? basename($data['file']), $sheets)->id;
                     $this->importFile = $data['file'];
                     $this->importSheets = $sheets;
                     $this->importSheetCount = count($sheets);
@@ -115,10 +124,10 @@ class ListBmpcMembers extends ListRecords
             set_time_limit(600);
 
             try {
-                app(BmpcMemberImportService::class)->importSheet(Storage::disk(self::DISK)->path($this->importFile), $sheet, $this->importSummary);
+                app(BmpcMemberImportService::class)->importSheet(Storage::disk(self::DISK)->path($this->importFile), $sheet, $this->importSummary, $this->importBatchId);
             } catch (Throwable $exception) {
                 report($exception);
-                $this->finishImport();
+                $this->finishImport("Sheet \"{$sheet['name']}\" could not be read.");
                 Notification::make()->danger()->title('The import stopped')->body("Sheet \"{$sheet['name']}\" could not be read. Members from the sheets before it were saved.")->send();
 
                 return;
@@ -130,17 +139,26 @@ class ListBmpcMembers extends ListRecords
         }
     }
 
-    private function finishImport(): void
+    private function finishImport(?string $errorMessage = null): void
     {
         $summary = $this->importSummary;
         Storage::disk(self::DISK)->delete($this->importFile);
         Auth::user()?->recordActivity('bmpc_members_imported', 'BMPC Members', $summary);
 
+        if ($batch = ImportBatch::find($this->importBatchId)) {
+            app(BmpcMemberImportService::class)->finishBatch($batch, $summary, $errorMessage);
+        }
+
+        $this->importBatchId = null;
         $this->importFile = null;
         $this->importSheets = [];
         $this->importSheetCount = 0;
         $this->importSummary = [];
         $this->resetTable();
+
+        if ($errorMessage !== null) {
+            return;
+        }
 
         $notes = array_filter([
             $summary['skipped'] ? number_format($summary['skipped']).' row(s) without a usable account number or name were skipped.' : null,

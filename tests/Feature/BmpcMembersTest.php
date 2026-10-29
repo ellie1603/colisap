@@ -8,6 +8,7 @@ use App\Filament\Resources\BmpcMemberResource\Pages\ListBmpcMembers;
 use App\Models\Application;
 use App\Models\BmpcMember;
 use App\Models\Branch;
+use App\Models\ImportBatch;
 use App\Models\User;
 use App\Services\Access\Permissions;
 use App\Services\Masterlist\BmpcMemberImportService;
@@ -164,6 +165,64 @@ class BmpcMembersTest extends TestCase
 
         $this->assertDatabaseHas('bmpc_members', ['account_no' => '00101959720', 'last_name' => 'Dela Cruz']);
         $this->assertSame([], Storage::disk('local')->allFiles('bmpc-member-imports'), 'The uploaded file is not kept.');
+
+        $batch = ImportBatch::sole();
+        $this->assertSame(['bmpc_members', 'members.xlsx', 'completed', 1, 0], [$batch->type, $batch->file_name, $batch->status, $batch->created_count, $batch->updated_count]);
+        $this->assertSame($batch->id, BmpcMember::where('account_no', '00101959720')->value('import_batch_id'), 'Import History knows which members this upload added.');
+    }
+
+    public function test_the_view_window_opens_in_the_browser_with_the_details_in_four_columns(): void
+    {
+        $this->actingAsRole(Permissions::CRS);
+        $member = BmpcMember::factory()->create(['account_no' => '010J00009', 'account_name' => 'AARON, ABNER R', 'address' => 'BRGY. JIBOLO, JANIUAY ILOILO', 'contact_number' => null]);
+
+        $details = BmpcMemberResource::viewDetails($member);
+
+        $this->assertSame('AARON, ABNER R', $details['title']);
+        $this->assertSame([['Acct. Number', '010J00009'], ['Account Name', 'AARON, ABNER R']], $details['rows'][0], 'Two label / value pairs per table row.');
+        $this->assertSame(['Contact number', '—'], $details['rows'][4][1]);
+        $this->assertSame([['Address', 'BRGY. JIBOLO, JANIUAY ILOILO']], $details['rows'][6], 'The address has a row of its own.');
+        $this->assertTrue($details['canEdit']);
+
+        Livewire::test(ListBmpcMembers::class)
+            ->assertSeeHtml('bmpc-member-view')
+            ->assertSeeHtml('colisap-details-table')
+            ->assertTableActionVisible('view', $member)
+            ->assertSee('010J00009');
+    }
+
+    #[DataProvider('staffRoles')]
+    public function test_staff_correct_a_members_details_but_never_the_account_number(string $role): void
+    {
+        $this->actingAsRole($role);
+        $member = BmpcMember::factory()->create(['account_no' => '00101959720', 'last_name' => 'Dela Cruz', 'contact_number' => null]);
+
+        Livewire::test(ListBmpcMembers::class)
+            ->assertTableActionVisible('edit', $member)
+            ->callTableAction('edit', $member, data: ['account_no' => '99999999999', 'last_name' => 'Dela Cruz-Reyes', 'contact_number' => '09171234567'])
+            ->assertHasNoTableActionErrors();
+
+        $member->refresh();
+        $this->assertSame(['00101959720', 'Dela Cruz-Reyes', '09171234567'], [$member->account_no, $member->last_name, $member->contact_number]);
+        $this->assertDatabaseHas('audit_logs', ['auditable_type' => BmpcMember::class, 'auditable_id' => $member->id, 'action' => 'updated']);
+    }
+
+    public function test_the_view_window_has_an_edit_button(): void
+    {
+        $this->actingAsRole(Permissions::ADMIN);
+        $member = BmpcMember::factory()->create(['first_name' => 'Juan']);
+
+        // The View window's Edit button runs mountTableAction('edit', key) for the member it shows.
+        Livewire::test(ListBmpcMembers::class)
+            ->assertSeeHtml("\$wire.mountTableAction('edit', member.key)")
+            ->call('mountTableAction', 'edit', BmpcMemberResource::viewDetails($member)['key'])
+            ->assertSet('mountedTableActions', ['edit'])
+            ->assertTableActionDataSet(['first_name' => 'Juan'])
+            ->setTableActionData(['first_name' => 'Pedro'])
+            ->callMountedTableAction()
+            ->assertHasNoTableActionErrors();
+
+        $this->assertSame('Pedro', $member->refresh()->first_name);
     }
 
     public function test_picking_a_bmpc_member_fills_in_the_new_transaction(): void

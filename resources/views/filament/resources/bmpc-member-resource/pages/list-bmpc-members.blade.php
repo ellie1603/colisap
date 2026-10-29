@@ -24,4 +24,56 @@
 
         {{ $this->table }}
     </div>
+
+    {{-- View window: filled from the row's data in the browser (BmpcMemberResource::viewDetails()), so it opens instantly. --}}
+    <div
+        x-data="{ member: null }"
+        x-on:bmpc-member-view.window="member = $event.detail; $nextTick(() => $dispatch('open-modal', { id: 'bmpc-member-view' }))"
+    >
+        <x-filament::modal id="bmpc-member-view" width="4xl">
+            <x-slot name="heading">
+                <span x-text="member?.title"></span>
+            </x-slot>
+
+            <div class="colisap-details-table">
+                <table>
+                    <tbody>
+                        <template x-for="(pair, index) in (member?.rows ?? [])" x-bind:key="index">
+                            <tr>
+                                <th scope="row" x-text="pair[0][0]"></th>
+                                <td
+                                    x-text="pair[0][1]"
+                                    x-bind:colspan="pair.length === 1 ? 3 : null"
+                                    x-bind:class="{ 'is-mono': pair[0][0] === 'Acct. Number', 'is-empty': pair[0][1] === '—' }"
+                                ></td>
+                                <template x-if="pair.length > 1">
+                                    <th scope="row" x-text="pair[1][0]"></th>
+                                </template>
+                                <template x-if="pair.length > 1">
+                                    <td x-text="pair[1][1]" x-bind:class="{ 'is-empty': pair[1][1] === '—' }"></td>
+                                </template>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <x-slot name="footerActions">
+                <x-filament::button
+                    color="gray"
+                    x-on:click="$dispatch('close-modal', { id: 'bmpc-member-view' })"
+                >
+                    Close
+                </x-filament::button>
+
+                <x-filament::button
+                    icon="heroicon-m-pencil-square"
+                    x-show="member?.canEdit"
+                    x-on:click="$dispatch('close-modal', { id: 'bmpc-member-view' }); $wire.mountTableAction('edit', member.key)"
+                >
+                    Edit
+                </x-filament::button>
+            </x-slot>
+        </x-filament::modal>
+    </div>
 </x-filament-panels::page>

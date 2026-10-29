@@ -67,15 +67,12 @@ class AdminPanelProvider extends PanelProvider
                     950 => '11, 15, 40',
                 ],
             ])
-            ->renderHook(PanelsRenderHook::STYLES_AFTER, fn () => new HtmlString('<link rel="stylesheet" href="'.e(asset('css/colisap.css')).'?v=22">'))
+            ->renderHook(PanelsRenderHook::STYLES_AFTER, fn () => new HtmlString('<link rel="stylesheet" href="'.e(asset('css/colisap.css')).'?v=27">'))
             ->renderHook(PanelsRenderHook::GLOBAL_SEARCH_BEFORE, fn (): View => view('filament.topbar-date'))
             ->renderHook(PanelsRenderHook::GLOBAL_SEARCH_AFTER, fn (): View => view('filament.theme-toggle'))
             ->renderHook(PanelsRenderHook::SIDEBAR_FOOTER, fn (): View => view('filament.sidebar-footer'))
             ->renderHook(TablesRenderHook::TOOLBAR_TOGGLE_COLUMN_TRIGGER_BEFORE, fn (): View => view('filament.table-reset-filters'))
-            ->renderHook(PanelsRenderHook::HEAD_END, fn () => new HtmlString('<script src="'.e(asset('js/colisap.js')).'?v=9"></script>'))
-            ->renderHook(PanelsRenderHook::BODY_END, fn (): string|View => session(Login::SPLASH_SESSION_KEY) && auth()->check()
-                ? view('filament.splash', ['userName' => auth()->user()->name])
-                : '')
+            ->renderHook(PanelsRenderHook::HEAD_END, fn () => new HtmlString('<script src="'.e(asset('js/colisap.js')).'?v=10"></script>'))
             ->spa()
             ->unsavedChangesAlerts()
             ->sidebarCollapsibleOnDesktop()

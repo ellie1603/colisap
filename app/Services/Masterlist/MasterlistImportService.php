@@ -94,11 +94,13 @@ class MasterlistImportService
         $columns = array_map('intval', array_filter($sheet['columns'] ?? [], fn ($column) => $column !== null && $column !== ''));
         $allowNegative = $this->policy->bool('allow_negative_balance');
         $isContactList = WorkbookParser::isContactList($columns);
-        $benefitAmounts = [
-            Member::BASIC_CATEGORY => $this->policy->benefitFor(Member::BASIC_CATEGORY),
-            Member::HIGHER_CATEGORY => $this->policy->benefitFor(Member::HIGHER_CATEGORY),
-        ];
+        $benefitAmounts = $this->benefitAmounts();
         $path = Storage::disk(self::DISK)->path($batch->file_path);
+        $hasBranchColumn = isset($columns['branch']) && ! $isContactList;
+        $homeBranchId = Branch::restrictedId();
+        $branchNames = $hasBranchColumn ? Branch::query()->orderBy('sort_order')->pluck('name', 'id')->all() : [];
+        $branchesByCell = [];
+        $branchesFound = [];
 
         $buffer = [];
         $references = [];
@@ -130,7 +132,18 @@ class MasterlistImportService
                 $normalized['warnings'][] = 'No category — new members default to '.Member::basicCategoryLabel();
             }
 
-            $row = $this->stagedRow($batch, $sheet, $rowNumber, $now, [
+            if ($hasBranchColumn) {
+                $branch = $this->rowBranch($normalized['raw']['branch'] ?? null, $sheet['branch_id'] ?? null, $homeBranchId, $branchNames, $branchesByCell);
+                $normalized['errors'] = [...$normalized['errors'], ...$branch['errors']];
+
+                if ($branch['id'] !== null) {
+                    $branchesFound[$branch['id']] = true;
+                }
+            }
+
+            // A row refused for its branch stays filed under the uploader's own branch, where only staff limited
+            // to that branch see it (in the preview, with its error); it is never written.
+            $row = $this->stagedRow($batch, $hasBranchColumn ? [...$sheet, 'branch_id' => $branch['id'] ?? $homeBranchId] : $sheet, $rowNumber, $now, [
                 'account_no' => $normalized['data']['account_no'],
                 'account_name' => $normalized['data']['account_name'],
                 'action' => $normalized['errors'] === [] ? 'pending' : 'invalid',
@@ -216,9 +229,146 @@ class MasterlistImportService
 
         $sheets[$position]['staged'] = true;
         $sheets[$position]['staged_rows'] = $staged;
+
+        if ($hasBranchColumn) {
+            $sheets[$position]['branch_name'] = implode(', ', array_intersect_key($branchNames, $branchesFound)) ?: null;
+        }
         $batch->update(['sheets' => $sheets]);
 
         return $staged;
+    }
+
+    /**
+     * @return array<string, float> category key => its current benefit amount
+     */
+    private function benefitAmounts(): array
+    {
+        return [
+            Member::BASIC_CATEGORY => $this->policy->benefitFor(Member::BASIC_CATEGORY),
+            Member::HIGHER_CATEGORY => $this->policy->benefitFor(Member::HIGHER_CATEGORY),
+        ];
+    }
+
+    /**
+     * Correct a row of the preview by hand (an invalid or repeated row) and check it again with the upload's rules:
+     * it becomes a new member or an update when it passes, and stays out of the import, with its reasons, when not.
+     * The values are typed as they would read in the Excel cells, keyed by field.
+     *
+     * @param  array<string, ?string>  $values
+     */
+    public function correctRow(ImportBatch $batch, ImportRow $row, array $values): ImportRow
+    {
+        if ($batch->status !== 'staged' || $row->import_batch_id !== $batch->id || $row->action === 'reference') {
+            throw new RuntimeException('Rows can only be edited before the import is sent or started.');
+        }
+
+        $sheet = collect($batch->sheets ?? [])->firstWhere('name', $row->sheet) ?? [];
+        $isContactList = ($row->data['mode'] ?? null) === 'contacts';
+        $values = array_map(fn (?string $value) => trim((string) $value), $values);
+        $cells = array_values($values);
+        $columns = array_flip(array_keys($values));
+
+        $normalized = $isContactList
+            ? $this->parser->normalizeContactRow($cells, $columns)
+            : $this->parser->normalizeRow($cells, $columns, $this->policy->bool('allow_negative_balance'), $this->benefitAmounts());
+
+        if ($normalized['blank']) {
+            throw new RuntimeException('Fill in the row before saving it.');
+        }
+
+        if (! $isContactList && ! isset($normalized['raw']['category']) && ($normalized['data']['category'] ?? null) === null) {
+            $normalized['warnings'][] = 'No category — new members default to '.Member::basicCategoryLabel();
+        }
+
+        $branchId = $row->branch_id;
+        $homeBranchId = Branch::restrictedId();
+
+        if (isset($sheet['columns']['branch']) && ! $isContactList) {
+            $branchesByCell = [];
+            $branch = $this->rowBranch($values['branch'] ?? null, $sheet['branch_id'] ?? null, $homeBranchId, Branch::query()->pluck('name', 'id')->all(), $branchesByCell);
+            $normalized['errors'] = [...$normalized['errors'], ...$branch['errors']];
+            $branchId = $branch['id'] ?? $homeBranchId;
+        }
+
+        [$staged] = $this->alignWithKnownAccounts([[
+            'account_no' => $normalized['data']['account_no'],
+            'action' => 'pending',
+            'data' => json_encode($normalized['data']),
+            'warnings' => json_encode($normalized['warnings']),
+        ]]);
+
+        $accountNo = $staged['account_no'];
+        $data = json_decode($staged['data'], true);
+        $warnings = json_decode($staged['warnings'], true) ?? [];
+        $errors = $normalized['errors'];
+        $member = $accountNo === null ? null : Branch::withoutRestriction(fn () => Member::withTrashed()->where('account_no', $accountNo)->first());
+
+        if ($errors === [] && ($repeat = $this->rowWithSameAccount($batch, $row, $accountNo))) {
+            $errors[] = "Duplicate Acct. Number — already listed in {$repeat->sheet} row {$repeat->row_number}";
+        }
+
+        if ($errors === [] && $isContactList && $member === null) {
+            $errors[] = 'No member has this Acct. Number — mobile number not imported';
+        } elseif ($errors === [] && $isContactList && $homeBranchId !== null && $member->branch_id !== $homeBranchId) {
+            $errors[] = 'This member belongs to another branch — mobile number not imported';
+        } elseif ($errors === [] && ! $isContactList && $member === null && ($data['approval_date'] ?? null) === null) {
+            $errors[] = 'New member has no approval (NEW) date';
+        }
+
+        $row->update([
+            'account_no' => $accountNo,
+            'account_name' => isset($data['account_name']) ? mb_substr((string) $data['account_name'], 0, 250) : null,
+            'branch_id' => $branchId,
+            'action' => $errors !== [] ? 'invalid' : ($member ? 'update' : 'new'),
+            'status' => $errors !== [] ? 'skipped' : 'pending',
+            'member_id' => $errors === [] ? $member?->id : null,
+            'data' => $data,
+            'raw' => $normalized['raw'],
+            'errors' => $errors,
+            'warnings' => $warnings,
+        ]);
+
+        $this->refreshCounts($batch);
+
+        return $row;
+    }
+
+    /**
+     * Another row of the file, already going in, for the same Acct. Number (also when written with or without
+     * its leading zeros).
+     */
+    private function rowWithSameAccount(ImportBatch $batch, ImportRow $row, ?string $accountNo): ?ImportRow
+    {
+        $key = $this->accountKey($accountNo);
+
+        return ImportRow::query()
+            ->where('import_batch_id', $batch->id)
+            ->whereKeyNot($row->getKey())
+            ->whereIn('action', ['new', 'update'])
+            ->select(['id', 'account_no', 'sheet', 'row_number'])
+            ->lazyById(1000)
+            ->first(fn (ImportRow $other) => $this->accountKey($other->account_no) === $key);
+    }
+
+    /**
+     * The branch of one row of a sheet that holds several branches: its Branch cell, or the sheet's branch when the
+     * cell is blank. Staff limited to one branch only import that branch's rows.
+     *
+     * @param  array<int, string>  $branchNames  every branch's name by id
+     * @param  array<string, ?int>  $branchesByCell  branch ids already resolved from cell text, kept between rows
+     * @return array{id: ?int, errors: list<string>}
+     */
+    private function rowBranch(?string $cell, ?int $sheetBranchId, ?int $homeBranchId, array $branchNames, array &$branchesByCell): array
+    {
+        $cell = trim((string) $cell);
+        $branchId = $cell === '' ? $sheetBranchId : (array_key_exists($cell, $branchesByCell) ? $branchesByCell[$cell] : $branchesByCell[$cell] = Branch::resolve($cell)?->id);
+
+        return match (true) {
+            $branchId === null && $cell !== '' => ['id' => null, 'errors' => ["Unknown branch \"{$cell}\""]],
+            $branchId === null => ['id' => null, 'errors' => ['No branch — fill in the Branch column or choose a branch for the sheet']],
+            $homeBranchId !== null && $branchId !== $homeBranchId => ['id' => null, 'errors' => ["Belongs to the {$branchNames[$branchId]} branch — your account imports only its own branch"]],
+            default => ['id' => $branchId, 'errors' => []],
+        };
     }
 
     /**

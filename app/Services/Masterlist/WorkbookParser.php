@@ -13,6 +13,7 @@ use OpenSpout\Reader\CSV\Reader as CSVReader;
 use OpenSpout\Reader\ODS\Options as ODSOptions;
 use OpenSpout\Reader\ODS\Reader as ODSReader;
 use OpenSpout\Reader\ReaderInterface;
+use OpenSpout\Reader\SheetWithVisibilityInterface;
 use OpenSpout\Reader\XLSX\Options as XLSXOptions;
 use OpenSpout\Reader\XLSX\Reader as XLSXReader;
 use RuntimeException;
@@ -20,7 +21,7 @@ use Throwable;
 use ZipArchive;
 
 /**
- * Streams a multi-sheet COLISAP masterlist workbook (one sheet per branch).
+ * Streams a multi-sheet COLISAP masterlist workbook: one sheet per branch, or sheets with a Branch column.
  *  - detectSheets(): finds each sheet's header row, maps columns to fields and suggests a branch
  *  - rows(): streams a sheet's data rows without loading the workbook into memory
  *  - normalizeRow(): converts one row into clean member data plus errors / warnings
@@ -41,6 +42,7 @@ class WorkbookParser
         'first_name' => 'First name',
         'middle_name' => 'Middle name',
         'suffix' => 'Suffix',
+        'branch' => 'Branch',
         'segment' => 'Segmentation',
         'category' => 'Category',
         'application_date' => 'Application date',
@@ -69,6 +71,7 @@ class WorkbookParser
         'first_name' => ['firstname', 'givenname', 'fname'],
         'middle_name' => ['middlename', 'middleinitial', 'mi', 'mname'],
         'suffix' => ['suffix', 'ext', 'nameext', 'nameextension'],
+        'branch' => ['branch', 'branchname', 'originbranch', 'homebranch', 'memberbranch', 'membersbranch'],
         'segment' => ['segmentation', 'segment', 'membersegment', 'seg', 'classification'],
         'category' => ['category', 'colisapcategory', 'coverage', 'colisapcoverage', 'plan', 'benefitcategory'],
         'application_date' => ['applicationdate', 'dateofapplication', 'dateapplied'],
@@ -102,7 +105,7 @@ class WorkbookParser
      *
      * @var list<string>
      */
-    private const CONTACT_LIST_FIELDS = ['account_no', 'full_name', 'last_name', 'first_name', 'middle_name', 'suffix', 'contact_number'];
+    private const CONTACT_LIST_FIELDS = ['account_no', 'full_name', 'last_name', 'first_name', 'middle_name', 'suffix', 'branch', 'contact_number'];
 
     private const HEADER_SCAN_ROWS = 25;
 
@@ -164,7 +167,7 @@ class WorkbookParser
                     'branch_id' => $branch?->id,
                     'branch_name' => $branch?->name,
                     'data_rows' => null,
-                    'include' => $headerIndex !== null && isset($columns['account_no']) && ($branch !== null || self::isContactList($columns)) && $sheet->isVisible(),
+                    'include' => $headerIndex !== null && isset($columns['account_no']) && ($branch !== null || isset($columns['branch']) || self::isContactList($columns)) && (! $sheet instanceof SheetWithVisibilityInterface || $sheet->isVisible()),
                 ];
             }
         } finally {

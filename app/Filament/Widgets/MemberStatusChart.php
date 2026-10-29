@@ -3,7 +3,9 @@
 namespace App\Filament\Widgets;
 
 use App\Models\Member;
+use Livewire\Attributes\Lazy;
 
+#[Lazy(isolate: false)]
 class MemberStatusChart extends ColisapChart
 {
     protected static ?string $heading = 'Member status';

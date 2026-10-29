@@ -3,10 +3,12 @@
 namespace App\Filament\Resources\ImportBatchResource\RelationManagers;
 
 use App\Filament\Resources\MemberResource;
+use App\Models\ImportBatch;
 use App\Models\ImportRow;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
 
 class RowsRelationManager extends RelationManager
 {
@@ -17,6 +19,14 @@ class RowsRelationManager extends RelationManager
     public function isReadOnly(): bool
     {
         return true;
+    }
+
+    /**
+     * A BMPC member list goes straight in, so it has no staged rows to show.
+     */
+    public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool
+    {
+        return ! ($ownerRecord instanceof ImportBatch && $ownerRecord->isBmpcMemberImport()) && parent::canViewForRecord($ownerRecord, $pageClass);
     }
 
     public function table(Table $table): Table

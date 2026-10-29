@@ -116,7 +116,12 @@ class Branch extends Model
             }
         }
 
-        return null;
+        // A shortened name ("BAROTAC" for Barotac Viejo) counts when it starts exactly one branch's name.
+        $startsWith = strlen($key) >= 4
+            ? $branches->filter(fn (self $branch) => str_starts_with(self::normalize($branch->name), $key))
+            : collect();
+
+        return $startsWith->count() === 1 ? $startsWith->first() : null;
     }
 
     public static function flushLookupCache(): void

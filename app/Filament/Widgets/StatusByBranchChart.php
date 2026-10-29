@@ -4,7 +4,9 @@ namespace App\Filament\Widgets;
 
 use App\Models\Branch;
 use App\Models\Member;
+use Livewire\Attributes\Lazy;
 
+#[Lazy(isolate: false)]
 class StatusByBranchChart extends ColisapChart
 {
     protected static ?string $heading = 'Status by branch';

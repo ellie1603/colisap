@@ -3,7 +3,8 @@
 namespace App\Policies;
 
 /**
- * The Barbaza MPC member list is filled only by importing the coop's Excel list.
+ * The Barbaza MPC member list is filled by importing the coop's Excel list; whoever may import may also correct
+ * a member's details by hand.
  */
 class BmpcMemberPolicy extends PermissionPolicy
 {

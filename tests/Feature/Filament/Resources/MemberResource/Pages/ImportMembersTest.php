@@ -121,6 +121,66 @@ class ImportMembersTest extends TestCase
         $page->assertTableBulkActionHidden('remove');
     }
 
+    public function test_an_invalid_row_can_be_edited_on_the_preview_and_then_imported(): void
+    {
+        Storage::fake('local');
+        $this->actingAsRole(Permissions::ADMIN);
+
+        $page = Livewire::test(ImportMembers::class)
+            ->set('upload.file', $this->workbookUpload())
+            ->call('analyze')
+            ->call('validateMapping');
+
+        while ($page->get('staging')) {
+            $page->call('stageNext');
+        }
+
+        $batch = ImportBatch::sole();
+        $invalid = $batch->rows()->where('action', 'invalid')->sole();
+
+        $page->assertTableActionHidden('correct', $batch->rows()->where('action', 'new')->first())
+            ->mountTableAction('correct', $invalid)
+            ->assertTableActionDataSet(['account_no' => null, 'full_name' => 'NO ACCOUNT, ROW', 'approval_date' => '1/2/2020'])
+            ->setTableActionData(['account_no' => '00101959799'])
+            ->callMountedTableAction()
+            ->assertHasNoTableActionErrors()
+            ->assertNotified('Row fixed — it will be added as a new member');
+
+        $this->assertSame(['new', 'pending', []], [$invalid->refresh()->action, $invalid->status, $invalid->errors]);
+        $this->assertSame([4, 0], [$batch->refresh()->new_rows, $batch->invalid_rows]);
+
+        $page->call('startImport');
+
+        while ($batch->refresh()->status === 'importing') {
+            $page->call('importNext');
+        }
+
+        $this->assertSame('President Roxas', Member::where('account_no', '00101959799')->sole()->branch->name);
+    }
+
+    public function test_an_edited_row_that_repeats_another_rows_account_number_stays_out_of_the_import(): void
+    {
+        Storage::fake('local');
+        $this->actingAsRole(Permissions::ADMIN);
+
+        $page = Livewire::test(ImportMembers::class)
+            ->set('upload.file', $this->workbookUpload())
+            ->call('analyze')
+            ->call('validateMapping');
+
+        while ($page->get('staging')) {
+            $page->call('stageNext');
+        }
+
+        $invalid = ImportBatch::sole()->rows()->where('action', 'invalid')->sole();
+
+        $page->callTableAction('correct', $invalid, ['account_no' => '101959720'])
+            ->assertNotified('Saved, but the row still has problems');
+
+        $this->assertSame('invalid', $invalid->refresh()->action);
+        $this->assertSame(['Duplicate Acct. Number — already listed in Barbaza row 3'], $invalid->errors);
+    }
+
     public function test_a_file_with_a_duplicate_account_number_is_blocked_until_the_duplicate_row_is_deleted(): void
     {
         Storage::fake('local');
@@ -214,6 +274,121 @@ class ImportMembersTest extends TestCase
         $page->set('mapping.0.branch_id', Branch::where('name', 'Culasi')->value('id'))
             ->call('validateMapping')
             ->assertSet('staging', true);
+    }
+
+    private function multiBranchSheetUpload(): UploadedFile
+    {
+        $header = ['CIFKey', 'Member Name', 'Category', 'NEW Date of Approval', 'Savings Balance', 'Branch'];
+        $path = $this->writeMasterlistWorkbook(tempnam(sys_get_temp_dir(), 'multibranch').'.xlsx', [
+            'Sheet1' => [
+                $header,
+                ['00101959720', 'DELA CRUZ, JUAN A.', 'COLISAP40000', '6/3/1998', 5000, 'BARBAZA'],
+                ['00601959721', 'SANTOS, MARIA B.', 'COLISAP40000', '6/3/1998', 800, 'BAROTAC'],
+                ['00901959722', 'LOPEZ, ANA', 'COLISAP40000', '6/3/1998', 2500, 'Kalibo Branch'],
+                ['00101959723', 'REYES, PEDRO', 'COLISAP40000', '6/3/1998', 100, ''],
+                ['00101959724', 'GARCIA, LUZ', 'COLISAP40000', '6/3/1998', 100, 'NOWHERE'],
+            ],
+        ]);
+
+        return UploadedFile::fake()->createWithContent('masterlist.xlsx', file_get_contents($path))
+            ->mimeType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    }
+
+    public function test_one_sheet_with_a_branch_column_imports_members_of_several_branches(): void
+    {
+        Storage::fake('local');
+        $this->actingAsRole(Permissions::ADMIN);
+
+        $page = Livewire::test(ImportMembers::class)
+            ->set('upload.file', $this->multiBranchSheetUpload())
+            ->call('analyze')
+            ->assertSet('mapping.0.include', true)
+            ->assertSet('mapping.0.branch_id', null)
+            ->assertSee('From the Branch column')
+            ->call('validateMapping')
+            ->assertSet('staging', true);
+
+        while ($page->get('staging')) {
+            $page->call('stageNext');
+        }
+
+        $batch = ImportBatch::sole();
+        $this->assertSame([3, 2], [$batch->new_rows, $batch->invalid_rows]);
+        $this->assertSame(['Barbaza, Barotac Viejo, Kalibo'], $batch->branchNames());
+        $this->assertSame(
+            ['00101959723' => ['No branch — fill in the Branch column or choose a branch for the sheet'], '00101959724' => ['Unknown branch "NOWHERE"']],
+            $batch->rows()->where('action', 'invalid')->orderBy('account_no')->get()->mapWithKeys(fn ($row) => [$row->account_no => $row->errors])->all(),
+        );
+
+        $page->call('startImport');
+
+        while ($batch->refresh()->status === 'importing') {
+            $page->call('importNext');
+        }
+
+        $this->assertSame([
+            '00101959720' => 'Barbaza',
+            '00601959721' => 'Barotac Viejo',
+            '00901959722' => 'Kalibo',
+        ], Member::with('branch')->orderBy('account_no')->get()->mapWithKeys(fn (Member $member) => [$member->account_no => $member->branch->name])->all());
+    }
+
+    public function test_a_csv_masterlist_with_a_branch_column_is_ready_to_validate_without_choosing_a_branch(): void
+    {
+        Storage::fake('local');
+        $this->actingAsRole(Permissions::ADMIN);
+        $csv = "CIFKey,Member Name,Category,Savings Balance,Branch\n00101959720,\"DELA CRUZ, JUAN A.\",COLISAP40000,5000,BARBAZA\n00901959722,\"LOPEZ, ANA\",COLISAP40000,2500,KALIBO\n";
+
+        $page = Livewire::test(ImportMembers::class)
+            ->set('upload.file', UploadedFile::fake()->createWithContent('masterlist.csv', $csv)->mimeType('text/csv'))
+            ->call('analyze')
+            ->assertSet('mapping.0.include', true)
+            ->call('validateMapping');
+
+        while ($page->get('staging')) {
+            $page->call('stageNext');
+        }
+
+        $this->assertSame(['Barbaza, Kalibo'], ImportBatch::sole()->branchNames());
+    }
+
+    public function test_a_branch_chosen_for_the_sheet_fills_rows_with_a_blank_branch_cell(): void
+    {
+        Storage::fake('local');
+        $this->actingAsRole(Permissions::ADMIN);
+
+        $page = Livewire::test(ImportMembers::class)
+            ->set('upload.file', $this->multiBranchSheetUpload())
+            ->call('analyze')
+            ->set('mapping.0.branch_id', Branch::where('name', 'Culasi')->value('id'))
+            ->call('validateMapping');
+
+        while ($page->get('staging')) {
+            $page->call('stageNext');
+        }
+
+        $this->assertSame(Branch::where('name', 'Culasi')->value('id'), ImportBatch::sole()->rows()->where('account_no', '00101959723')->value('branch_id'));
+    }
+
+    public function test_crs_officer_importing_a_sheet_with_a_branch_column_imports_only_their_branchs_rows(): void
+    {
+        Storage::fake('local');
+        $this->actingAs(User::factory()->create(['is_active' => true, 'branch_id' => Branch::where('name', 'Barbaza')->value('id')])->assignRole(Permissions::CRS));
+
+        $page = Livewire::test(ImportMembers::class)
+            ->set('upload.file', $this->multiBranchSheetUpload())
+            ->call('analyze')
+            ->call('validateMapping');
+
+        while ($page->get('staging')) {
+            $page->call('stageNext');
+        }
+
+        $rows = ImportBatch::sole()->rows()->orderBy('account_no')->get()->keyBy('account_no');
+        // The sheet's branch is preset to the officer's own, so the row with a blank Branch cell is theirs too.
+        $this->assertSame(['new', 'new', 'invalid', 'invalid', 'invalid'], $rows->pluck('action')->values()->all());
+        $this->assertSame(['Belongs to the Kalibo branch — your account imports only its own branch'], $rows['00901959722']->errors);
+        $this->assertTrue(ImportBatch::query()->visibleToCurrentUser()->exists(), 'Refused rows must not hide the import from the officer who sent it.');
     }
 
     public function test_crs_officer_with_a_home_branch_imports_only_that_branchs_sheet(): void

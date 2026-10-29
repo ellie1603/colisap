@@ -22,8 +22,6 @@ class Login extends BaseLogin
 
     public const LOCKOUT_SECONDS = 60;
 
-    public const SPLASH_SESSION_KEY = 'colisap.show_splash';
-
     protected static string $view = 'filament.pages.auth.login';
 
     public ?int $lockoutSecondsRemaining = null;
@@ -99,7 +97,6 @@ class Login extends BaseLogin
         RateLimiter::clear($accountKey);
 
         session()->regenerate();
-        session()->flash(self::SPLASH_SESSION_KEY, true);
 
         return app(LoginResponse::class);
     }

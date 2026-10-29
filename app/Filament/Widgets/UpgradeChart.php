@@ -3,7 +3,9 @@
 namespace App\Filament\Widgets;
 
 use App\Models\Member;
+use Livewire\Attributes\Lazy;
 
+#[Lazy(isolate: false)]
 class UpgradeChart extends ColisapChart
 {
     protected static ?string $heading = '90-day upgrade monitoring';

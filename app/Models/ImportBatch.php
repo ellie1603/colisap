@@ -31,7 +31,18 @@ class ImportBatch extends Model
         'rejected' => 'Rejected',
     ];
 
+    /**
+     * What a file was imported into.
+     *
+     * @var array<string, string>
+     */
+    public const TYPES = [
+        'members' => 'COLISAP masterlist',
+        'bmpc_members' => 'BMPC members',
+    ];
+
     protected $fillable = [
+        'type',
         'file_name',
         'file_path',
         'as_of_date',
@@ -50,6 +61,10 @@ class ImportBatch extends Model
         'error_message',
         'uploaded_by',
         'completed_at',
+    ];
+
+    protected $attributes = [
+        'type' => 'members',
     ];
 
     protected $casts = [
@@ -93,6 +108,11 @@ class ImportBatch extends Model
                 ->where('uploaded_by', Auth::id())));
     }
 
+    public function isBmpcMemberImport(): bool
+    {
+        return $this->type === 'bmpc_members';
+    }
+
     /**
      * Rows that will be written (new + updates).
      */
@@ -123,6 +143,14 @@ class ImportBatch extends Model
     public function rows(): HasMany
     {
         return $this->hasMany(ImportRow::class);
+    }
+
+    /**
+     * BMPC members this upload added.
+     */
+    public function bmpcMembers(): HasMany
+    {
+        return $this->hasMany(BmpcMember::class);
     }
 
     public function uploader(): BelongsTo

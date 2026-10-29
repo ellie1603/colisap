@@ -16,7 +16,7 @@
         .card { width: 100%; max-width: 30rem; background: var(--card); border-radius: 18px; padding: 36px 32px 32px; position: relative; overflow: hidden;
             box-shadow: 0 24px 60px -32px rgba(46, 58, 140, .55), 0 0 0 1px var(--ring); }
         .card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 5px;
-            background: linear-gradient(90deg, #2E3A8C 0 33%, #FFD200 33% 66%, #E8691C 66% 100%); }
+            background: #2E3A8C; }
         .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
         .brand img { width: 40px; height: 40px; border-radius: 10px; background: #fff; padding: 4px; box-shadow: 0 0 0 1px var(--ring); }
         .code { font-size: 13px; font-weight: 700; letter-spacing: .12em; color: var(--code); }

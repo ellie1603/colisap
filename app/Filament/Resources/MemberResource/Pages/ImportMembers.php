@@ -91,7 +91,7 @@ class ImportMembers extends Page implements HasTable
             ->schema([
                 Forms\Components\FileUpload::make('file')
                     ->label('Masterlist workbook')
-                    ->helperText('Excel (.xlsx), OpenDocument (.ods) or CSV. One sheet per branch — the sheet name selects the branch. No row limit. A file with only the Acct. Number, name and mobile number updates the members\' mobile numbers and nothing else.')
+                    ->helperText('Excel (.xlsx), OpenDocument (.ods) or CSV. One sheet per branch (the sheet name selects the branch), or one sheet with a Branch column for several branches. No row limit. A file with only the Acct. Number, name and mobile number updates the members\' mobile numbers and nothing else.')
                     ->disk(MasterlistImportService::DISK)
                     ->directory(MasterlistImportService::DIRECTORY)
                     ->visibility('private')
@@ -180,7 +180,7 @@ class ImportMembers extends Page implements HasTable
 
         if (collect($this->mapping)->where('include', true)->isEmpty()) {
             Notification::make()->title('Check the sheet mapping')
-                ->body('No sheet could be matched automatically to a branch with an Acct. Number column. Map them below.')
+                ->body('No sheet could be matched automatically to a branch (by its name or a Branch column) with an Acct. Number column. Map them below.')
                 ->warning()->send();
         }
     }
@@ -257,8 +257,8 @@ class ImportMembers extends Page implements HasTable
                 $map['branch_id'] = $ownBranch;
             } elseif ($include && ! isset($columns['full_name']) && ! (isset($columns['last_name']) && isset($columns['first_name']))) {
                 $problems[] = "{$sheet['name']}: map the Account Name column";
-            } elseif ($include && ! $map['branch_id']) {
-                $problems[] = "{$sheet['name']}: choose a branch";
+            } elseif ($include && ! $map['branch_id'] && ! isset($columns['branch'])) {
+                $problems[] = "{$sheet['name']}: choose a branch, or map the Branch column";
             } elseif ($include && $ownBranch !== null && (int) $map['branch_id'] !== $ownBranch) {
                 $problems[] = "{$sheet['name']}: you can only import members of the {$branches[$ownBranch]} branch";
             }
@@ -489,6 +489,19 @@ class ImportMembers extends Page implements HasTable
                 Tables\Filters\Filter::make('has_warnings')->label('With warnings')
                     ->query(fn ($query) => $query->whereNotNull('warnings')->where('warnings', '<>', '[]')),
             ])
+            ->actions([
+                Tables\Actions\Action::make('correct')
+                    ->label('Edit')
+                    ->icon('heroicon-m-pencil-square')
+                    ->iconButton()
+                    ->visible(fn (ImportRow $record) => in_array($record->action, ['invalid', 'duplicate'], true) && $this->batch()?->status === 'staged')
+                    ->modalHeading(fn (ImportRow $record) => "Edit {$record->sheet} row {$record->row_number}")
+                    ->modalDescription('Type the values as they should read in the Excel file. The row is checked again when you save; nothing is written to the members yet.')
+                    ->modalSubmitActionLabel('Save and check')
+                    ->fillForm(fn (ImportRow $record) => $this->correctionValues($record))
+                    ->form(fn (ImportRow $record) => $this->correctionFields($record))
+                    ->action(fn (ImportRow $record, array $data) => $this->correctRow($record, $data)),
+            ])
             ->bulkActions([
                 Tables\Actions\BulkAction::make('remove')
                     ->label('Delete selected')
@@ -504,6 +517,93 @@ class ImportMembers extends Page implements HasTable
             ])
             ->defaultSort('id')
             ->paginated([10, 25, 50, 100]);
+    }
+
+    /**
+     * The columns of the row's sheet that the Edit window offers, in the mapping screen's order; new members
+     * also need an approval date, so it is always offered outside a mobile-number list.
+     *
+     * @return list<string>
+     */
+    private function correctionFieldNames(ImportRow $row): array
+    {
+        $sheet = collect($this->batch()?->sheets ?? [])->firstWhere('name', $row->sheet) ?? [];
+        $isContactList = ($row->data['mode'] ?? null) === 'contacts';
+        $wanted = [...array_keys($sheet['columns'] ?? []), ...array_keys($row->raw ?? []), 'account_no', ...($isContactList ? [] : ['approval_date'])];
+
+        return array_values(array_intersect(array_keys(WorkbookParser::FIELDS), $wanted));
+    }
+
+    /**
+     * @return array<string, ?string>
+     */
+    private function correctionValues(ImportRow $row): array
+    {
+        return collect($this->correctionFieldNames($row))
+            ->mapWithKeys(fn (string $field) => [$field => $field === 'account_no' ? ($row->account_no ?? $row->raw['account_no'] ?? null) : ($row->raw[$field] ?? null)])
+            ->all();
+    }
+
+    /**
+     * @return list<Forms\Components\Component>
+     */
+    private function correctionFields(ImportRow $row): array
+    {
+        $hints = [
+            'category' => 'e.g. COLISAP40000 or COLISAP60000',
+            'segment' => 'D (Diamond), G (Gold) or S (Silver)',
+            'application_date' => 'e.g. 6/3/1998',
+            'approval_date' => 'e.g. 6/3/1998 — required for a new member',
+            'upgrade_requested_at' => 'e.g. 6/3/1998',
+            'birthdate' => 'e.g. 6/3/1998',
+            'date_deceased' => 'e.g. 6/3/1998',
+        ];
+
+        return [
+            Forms\Components\Grid::make(['default' => 1, 'sm' => 2])->schema(
+                collect($this->correctionFieldNames($row))->map(fn (string $field) => match ($field) {
+                    'branch' => Forms\Components\Select::make('branch')
+                        ->label(WorkbookParser::FIELDS['branch'])
+                        ->options(fn () => collect(Branch::options())->mapWithKeys(fn (string $name) => [$name => $name])->all())
+                        ->searchable(),
+                    default => Forms\Components\TextInput::make($field)
+                        ->label(WorkbookParser::FIELDS[$field])
+                        ->placeholder($hints[$field] ?? null)
+                        ->required($field === 'account_no')
+                        ->columnSpan(in_array($field, ['full_name', 'address', 'remarks'], true) ? 'full' : 1),
+                })->all(),
+            ),
+        ];
+    }
+
+    /**
+     * Save the corrected values and say whether the row now goes in.
+     *
+     * @param  array<string, ?string>  $values
+     */
+    public function correctRow(ImportRow $row, array $values): void
+    {
+        $batch = $this->batch();
+
+        try {
+            $row = $this->service()->correctRow($batch, $row, $values);
+        } catch (\RuntimeException $exception) {
+            Notification::make()->title('The row was not saved')->body($exception->getMessage())->danger()->send();
+
+            return;
+        }
+
+        if ($row->action === 'invalid') {
+            Notification::make()->title('Saved, but the row still has problems')
+                ->body(implode('<br>', array_map('e', $row->errors ?? [])))
+                ->warning()->persistent()->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->title($row->action === 'new' ? 'Row fixed — it will be added as a new member' : 'Row fixed — it will update the existing member')
+            ->success()->send();
     }
 
     /**

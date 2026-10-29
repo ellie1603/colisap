@@ -5,12 +5,14 @@ namespace Tests\Feature\Filament\Resources\ImportBatchResource;
 use App\Filament\Resources\ImportBatchResource;
 use App\Filament\Resources\ImportBatchResource\Pages\ListImportBatches;
 use App\Filament\Resources\ImportBatchResource\Pages\ViewImportBatch;
+use App\Models\BmpcMember;
 use App\Models\Branch;
 use App\Models\ImportBatch;
 use App\Models\ImportRow;
 use App\Models\Member;
 use App\Models\User;
 use App\Services\Access\Permissions;
+use App\Services\Masterlist\BmpcMemberImportService;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
@@ -82,6 +84,22 @@ class ImportHistoryTest extends TestCase
         $this->assertSame([0, 0], [ImportBatch::count(), Member::count()]);
     }
 
+    public function test_the_import_page_shows_its_details_in_a_table_without_masterlist_figures_for_bmpc_uploads(): void
+    {
+        $this->actingAsRole(Permissions::ADMIN);
+        $masterlist = ImportBatch::create(['file_name' => 'masterlist.xlsx', 'as_of_date' => now(), 'status' => 'completed', 'total_rows' => 36605]);
+        $bmpc = ImportBatch::create(['type' => 'bmpc_members', 'file_name' => 'members.csv', 'as_of_date' => now(), 'status' => 'completed', 'invalid_rows' => 3]);
+
+        Livewire::test(ViewImportBatch::class, ['record' => $masterlist->getRouteKey()])
+            ->assertSeeHtml('colisap-details-table')
+            ->assertSeeInOrder(['Total rows', '36,605', 'Invalid'])
+            ->assertSee(['Balances as of', 'Duplicates', 'With warnings']);
+
+        Livewire::test(ViewImportBatch::class, ['record' => $bmpc->getRouteKey()])
+            ->assertSee(['BMPC members', 'Skipped'])
+            ->assertDontSee(['Balances as of', 'Duplicates', 'With warnings']);
+    }
+
     public function test_crs_officer_with_a_home_branch_sees_only_imports_of_that_branch(): void
     {
         $barbaza = Branch::where('name', 'Barbaza')->value('id');
@@ -103,6 +121,29 @@ class ImportHistoryTest extends TestCase
             ->assertCanNotSeeTableRecords([$allBranchesImport, $someoneElsesUpload]);
 
         $this->get(ImportBatchResource::getUrl('view', ['record' => $allBranchesImport]))->assertNotFound();
+    }
+
+    public function test_administrator_deletes_a_bmpc_member_import_and_only_the_members_it_added(): void
+    {
+        $this->actingAsRole(Permissions::ADMIN);
+        $import = app(BmpcMemberImportService::class);
+        $earlier = BmpcMember::factory()->create(['account_no' => '00101959720', 'contact_number' => null]);
+        $batch = $import->startBatch('BMPC MEMBERS.xlsx', [['name' => 'Members']]);
+        $added = BmpcMember::factory()->count(2)->create(['import_batch_id' => $batch->id]);
+        $import->finishBatch($batch, ['added' => 2, 'updated' => 1, 'skipped' => 0, 'other_branch' => 0, 'sheets' => 1]);
+
+        Livewire::test(ListImportBatches::class)
+            ->assertCanSeeTableRecords([$batch])
+            ->assertSee('BMPC members')
+            ->assertTableActionHidden('resume', $batch)
+            ->mountTableAction('deleteImportedData', $batch)
+            ->assertSee('permanently deletes 2 BMPC member(s)')
+            ->callMountedTableAction()
+            ->assertNotified('Imported data deleted');
+
+        $this->assertSame([$earlier->id], BmpcMember::pluck('id')->all(), 'A member the upload only updated stays.');
+        $this->assertSame(0, ImportBatch::count());
+        $this->assertSame(0, BmpcMember::whereIn('id', $added->modelKeys())->count());
     }
 
     public function test_crs_officers_cannot_delete_imported_data(): void

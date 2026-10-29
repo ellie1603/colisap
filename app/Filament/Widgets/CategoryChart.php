@@ -2,6 +2,9 @@
 
 namespace App\Filament\Widgets;
 
+use Livewire\Attributes\Lazy;
+
+#[Lazy(isolate: false)]
 class CategoryChart extends ColisapChart
 {
     protected static ?string $heading = 'Benefit category';
