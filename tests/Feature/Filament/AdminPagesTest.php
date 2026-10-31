@@ -24,7 +24,6 @@ use App\Services\Reports\ReportService;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Livewire\Livewire;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Spatie\Permission\Models\Role;
 use Tests\Concerns\ActsAsRole;
 use Tests\TestCase;
 
@@ -97,7 +96,6 @@ class AdminPagesTest extends TestCase
             ApplicationResource::getUrl('edit', ['record' => Application::first()]),
             ImportBatchResource::getUrl('view', ['record' => ImportBatch::first()]),
             BranchResource::getUrl('edit', ['record' => Branch::first()]),
-            RoleResource::getUrl('edit', ['record' => Role::findByName(Permissions::CRS)]),
             AuditLogResource::getUrl('view', ['record' => AuditLog::first()]),
         ] as $url) {
             $this->get($url)->assertOk();

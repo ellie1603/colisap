@@ -30,7 +30,7 @@
         x-data="{ member: null }"
         x-on:bmpc-member-view.window="member = $event.detail; $nextTick(() => $dispatch('open-modal', { id: 'bmpc-member-view' }))"
     >
-        <x-filament::modal id="bmpc-member-view" width="4xl">
+        <x-filament::modal id="bmpc-member-view" width="4xl" footer-actions-alignment="end">
             <x-slot name="heading">
                 <span x-text="member?.title"></span>
             </x-slot>
@@ -60,18 +60,18 @@
 
             <x-slot name="footerActions">
                 <x-filament::button
-                    color="gray"
-                    x-on:click="$dispatch('close-modal', { id: 'bmpc-member-view' })"
-                >
-                    Close
-                </x-filament::button>
-
-                <x-filament::button
                     icon="heroicon-m-pencil-square"
                     x-show="member?.canEdit"
                     x-on:click="$dispatch('close-modal', { id: 'bmpc-member-view' }); $wire.mountTableAction('edit', member.key)"
                 >
                     Edit
+                </x-filament::button>
+
+                <x-filament::button
+                    color="gray"
+                    x-on:click="$dispatch('close-modal', { id: 'bmpc-member-view' })"
+                >
+                    Close
                 </x-filament::button>
             </x-slot>
         </x-filament::modal>

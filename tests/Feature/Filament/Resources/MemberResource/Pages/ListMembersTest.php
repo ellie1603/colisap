@@ -27,8 +27,8 @@ class ListMembersTest extends TestCase
 
         $component = Livewire::test(ListMembers::class)
             ->loadTable()
-            ->filterTable('status', ['dormant'])
-            ->filterTable('branch_id', [$barbaza])
+            ->filterTable('status', 'dormant')
+            ->filterTable('branch_id', $barbaza)
             ->callAction('export', ['layout' => 'detailed', 'format' => 'csv'])
             ->assertFileDownloaded('members-2026-06-30-080000.csv');
 
@@ -80,7 +80,7 @@ class ListMembersTest extends TestCase
 
         Livewire::test(ListMembers::class)
             ->loadTable()
-            ->filterTable('segment', ['none'])
+            ->filterTable('segment', 'na')
             ->assertCanSeeTableRecords([$unassigned])
             ->assertCanNotSeeTableRecords([$diamond]);
     }

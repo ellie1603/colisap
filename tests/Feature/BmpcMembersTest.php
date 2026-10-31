@@ -97,6 +97,56 @@ class BmpcMembersTest extends TestCase
         );
     }
 
+    public function test_the_coop_list_brings_last_transaction_date_segmentation_category_and_remarks_or_leaves_them_empty(): void
+    {
+        $this->actingAsRole(Permissions::ADMIN);
+        $path = tempnam(sys_get_temp_dir(), 'bmpc').'.csv';
+        file_put_contents($path, implode("\n", [
+            'CIFKey,"Member Name","Birth Date",Branch,"Savings Balance","Last Transaction Date",Category,Classification,"Segmentation Status","Membership Status"',
+            '0050000043123,"MOLINA, ZAIRAH G",2005-05-13,BALASAN,620.79,2026-08-15,COLISAP60000,NON-MIGS,SILVER,ACTIVE',
+            '0050000043100,"TACURDA, ERDITA O",,BALASAN,,,,MIGS,"NOT SEGMENTED",DECEASED',
+            '0050000043098,"ALAJAR, ROGEN D",,BALASAN,15,,,NON-MIGS,"NOT SEGMENTED",DORMANT-BAL',
+        ]));
+
+        app(BmpcMemberImportService::class)->import($path);
+
+        $this->assertSame(
+            [
+                '0050000043098' => [null, null, null, 'dormant-bal'],
+                '0050000043100' => [null, null, null, 'deceased'],
+                '0050000043123' => ['2026-08-15', 'S', '60000', null],
+            ],
+            BmpcMember::orderBy('account_no')->get()->mapWithKeys(fn (BmpcMember $member) => [$member->account_no => [
+                $member->last_transaction_date?->toDateString(), $member->segment, $member->category, $member->remarks,
+            ]])->all(),
+            'Segmentation comes from "Segmentation Status", not "Classification" (MIGS); what the file lacks stays empty.',
+        );
+    }
+
+    public function test_staff_add_a_member_by_hand_from_the_add_button(): void
+    {
+        $this->actingAsRole(Permissions::CRS);
+
+        Livewire::test(ListBmpcMembers::class)
+            ->assertActionVisible('create')
+            ->callAction('create', data: [
+                'account_no' => '00101959799', 'last_name' => 'Santos', 'first_name' => 'Maria', 'middle_name' => 'Reyes',
+                'branch_id' => $this->branchId('Barbaza'), 'birthdate' => '1990-01-15', 'sex' => 'female', 'savings_balance' => 2500,
+                'last_transaction_date' => '2026-10-01', 'segment' => 'G', 'category' => '40000',
+            ])
+            ->assertHasNoActionErrors()
+            ->assertNotified('Member added');
+
+        $member = BmpcMember::sole();
+        $this->assertSame(['SANTOS, MARIA REYES', 'G', '40000', '2026-10-01', null], [
+            $member->account_name, $member->segment, $member->category, $member->last_transaction_date->toDateString(), $member->remarks,
+        ], 'The Account Name is made from the name when none is typed; empty fields stay empty.');
+
+        Livewire::test(ListBmpcMembers::class)
+            ->callAction('create', data: ['account_no' => '00101959799', 'last_name' => 'Cruz', 'first_name' => 'Ana'])
+            ->assertHasActionErrors(['account_no' => 'unique']);
+    }
+
     public function test_importing_again_updates_members_without_erasing_details_the_new_file_leaves_blank(): void
     {
         $this->actingAsRole(Permissions::ADMIN);
@@ -174,14 +224,20 @@ class BmpcMembersTest extends TestCase
     public function test_the_view_window_opens_in_the_browser_with_the_details_in_four_columns(): void
     {
         $this->actingAsRole(Permissions::CRS);
-        $member = BmpcMember::factory()->create(['account_no' => '010J00009', 'account_name' => 'AARON, ABNER R', 'address' => 'BRGY. JIBOLO, JANIUAY ILOILO', 'contact_number' => null]);
+        $member = BmpcMember::factory()->create([
+            'account_no' => '010J00009', 'account_name' => 'AARON, ABNER R', 'address' => 'BRGY. JIBOLO, JANIUAY ILOILO', 'contact_number' => null,
+            'birthdate' => now()->subYears(39)->subDay(), 'segment' => null, 'remarks' => 'dormant-txn',
+        ]);
 
         $details = BmpcMemberResource::viewDetails($member);
 
         $this->assertSame('AARON, ABNER R', $details['title']);
         $this->assertSame([['Acct. Number', '010J00009'], ['Account Name', 'AARON, ABNER R']], $details['rows'][0], 'Two label / value pairs per table row.');
-        $this->assertSame(['Contact number', '—'], $details['rows'][4][1]);
-        $this->assertSame([['Address', 'BRGY. JIBOLO, JANIUAY ILOILO']], $details['rows'][6], 'The address has a row of its own.');
+        $this->assertSame(['Age', '39'], $details['rows'][4][1], 'The age is worked out from the birthdate.');
+        $this->assertSame(['Contact number', '—'], $details['rows'][5][0]);
+        $this->assertSame(['Segmentation', 'NA'], $details['rows'][6][1]);
+        $this->assertSame(['Remarks', 'Dormant-txn'], $details['rows'][7][1]);
+        $this->assertSame([['Address', 'BRGY. JIBOLO, JANIUAY ILOILO']], $details['rows'][8], 'The address has a row of its own.');
         $this->assertTrue($details['canEdit']);
 
         Livewire::test(ListBmpcMembers::class)

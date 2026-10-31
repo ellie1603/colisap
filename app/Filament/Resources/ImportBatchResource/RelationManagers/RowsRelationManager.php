@@ -26,7 +26,7 @@ class RowsRelationManager extends RelationManager
      */
     public static function canViewForRecord(Model $ownerRecord, string $pageClass): bool
     {
-        return ! ($ownerRecord instanceof ImportBatch && $ownerRecord->isBmpcMemberImport()) && parent::canViewForRecord($ownerRecord, $pageClass);
+        return (! $ownerRecord instanceof ImportBatch || $ownerRecord->isMasterlistImport()) && parent::canViewForRecord($ownerRecord, $pageClass);
     }
 
     public function table(Table $table): Table

@@ -3,12 +3,12 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Resources\MemberResource;
+use App\Filament\Tables\TableFilters;
 use App\Models\Branch;
 use App\Models\Member;
 use App\Models\ReplenishmentNotice;
 use App\Services\Colisap\MemberStatusEngine;
 use App\Services\Colisap\MonitoringService;
-use App\Services\Policy\PolicyDefaults;
 use App\Services\Policy\PolicySettings;
 use App\Services\Sms\MonitoringSms;
 use App\Services\Sms\SmsGateway;
@@ -114,6 +114,8 @@ class Monitoring extends Page implements HasTable
 
     public function table(Table $table): Table
     {
+        $table->searchPlaceholder('Search name or Acct. Number');
+
         return match ($this->tab) {
             'upgrades' => $this->upgradesTable($table),
             'qualified' => $this->qualifiedTable($table),
@@ -121,6 +123,20 @@ class Monitoring extends Page implements HasTable
             'dormancy' => $this->dormancyTable($table),
             default => $this->effectivityTable($table),
         };
+    }
+
+    /**
+     * The filters every member view shares: branch, category and segmentation.
+     *
+     * @return list<Tables\Filters\BaseFilter>
+     */
+    private function memberFilters(): array
+    {
+        return [
+            $this->branchFilter(),
+            TableFilters::category(),
+            TableFilters::segmentation(),
+        ];
     }
 
     /**
@@ -170,12 +186,12 @@ class Monitoring extends Page implements HasTable
                     }),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('window')->label('Becoming effective within')
-                    ->options(['30' => '30 days', '60' => '60 days', '90' => '90 days'])
+                Tables\Filters\SelectFilter::make('window')->label('Becoming effective within')->placeholder('Any effectivity date')
+                    ->options(['30' => 'Effective within 30 days', '60' => 'Effective within 60 days', '90' => 'Effective within 90 days'])
                     ->query(fn (Builder $query, array $data) => $query->when($data['value'] ?? null, fn (Builder $query, $window) => $query
                         ->whereNotNull('approval_date')
                         ->where('approval_date', '<=', Carbon::today()->subDays($days)->addDays((int) $window)->toDateString()))),
-                $this->branchFilter(),
+                ...$this->memberFilters(),
             ])
             ->headerActions([$this->smsToAllAction()])
             ->actions([$this->smsAction()])
@@ -218,7 +234,7 @@ class Monitoring extends Page implements HasTable
                             default => $query,
                         };
                     }),
-                $this->branchFilter(),
+                ...$this->memberFilters(),
             ])
             ->headerActions([$this->smsToAllAction()])
             ->actions([
@@ -267,14 +283,14 @@ class Monitoring extends Page implements HasTable
             ])
             ->filters([
                 Tables\Filters\TernaryFilter::make('has_mobile')->label('Mobile number')
-                    ->placeholder('All')
+                    ->placeholder('Any mobile number')
                     ->trueLabel('Has a mobile number')
                     ->falseLabel('No mobile number')
                     ->queries(
                         true: fn (Builder $query) => $query->whereNotNull('contact_number')->where('contact_number', '<>', ''),
                         false: fn (Builder $query) => $query->where(fn (Builder $q) => $q->whereNull('contact_number')->orWhere('contact_number', '')),
                     ),
-                $this->branchFilter(),
+                ...$this->memberFilters(),
             ])
             ->headerActions([$this->smsToAllAction()])
             ->actions([
@@ -456,11 +472,22 @@ class Monitoring extends Page implements HasTable
                     ->color(fn (string $state) => ReplenishmentNotice::statusColor($state)),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('status')->options(ReplenishmentNotice::STATUSES)->default('open'),
-                Tables\Filters\Filter::make('due_soon')->label("Deadline within {$warn} days")
-                    ->query(fn (Builder $query) => $query->where('status', 'open')->whereBetween('deadline', [Carbon::today()->toDateString(), Carbon::today()->addDays($warn)->toDateString()])),
-                Tables\Filters\Filter::make('overdue')->label('Overdue')
-                    ->query(fn (Builder $query) => $query->where('status', 'open')->where('deadline', '<', Carbon::today()->toDateString())),
+                // One dropdown: the deadline checks are narrower kinds of "Open".
+                Tables\Filters\SelectFilter::make('status')
+                    ->placeholder('All notices')
+                    ->options([
+                        'open' => 'Open',
+                        'due_soon' => "Open, due within {$warn} days",
+                        'overdue' => 'Open, overdue',
+                        ...collect(ReplenishmentNotice::STATUSES)->except('open')->all(),
+                    ])
+                    ->default('open')
+                    ->query(fn (Builder $query, array $data) => match ($data['value'] ?? null) {
+                        null, '' => $query,
+                        'due_soon' => $query->where('status', 'open')->whereBetween('deadline', [Carbon::today()->toDateString(), Carbon::today()->addDays($warn)->toDateString()]),
+                        'overdue' => $query->where('status', 'open')->where('deadline', '<', Carbon::today()->toDateString()),
+                        default => $query->where('status', $data['value']),
+                    }),
                 $this->branchFilter('member'),
             ])
             ->headerActions([$this->smsToAllAction()])
@@ -498,16 +525,35 @@ class Monitoring extends Page implements HasTable
     {
         $months = $this->policy()->int('dormancy_termination_months');
 
+        $inactiveSince = Carbon::today()->subMonthsNoOverflow($this->policy()->int('dormancy_months'));
+        $threshold = $this->policy()->decimal('dormant_balance_threshold');
+
+        // The two kinds of dormant account: no transaction for the inactivity period, or savings below the threshold.
+        $inTransaction = fn (Builder $query) => $query->where(fn (Builder $query) => $query
+            ->where('savings_account_status', 'dormant-txn')
+            ->orWhereDate('last_activity_date', '<=', $inactiveSince));
+        $inBalance = fn (Builder $query) => $query->where(fn (Builder $query) => $query
+            ->where('savings_account_status', 'dormant-bal')
+            ->orWhere('savings_balance', '<', $threshold));
+
         return $table
             ->query(Member::query()->with('branch')->participating()->where(fn (Builder $q) => $q
                 ->where('status', 'dormant')
                 ->orWhere('savings_account_status', 'like', 'dormant%')))
             ->heading('Dormant savings accounts')
-            ->description("Dormant for {$months} consecutive months terminates participation (Policy VII.2). Activity source: ".(PolicyDefaults::SETTINGS['dormancy_activity_source']['options'][$this->policy()->get('dormancy_activity_source')] ?? ''))
+            ->description('Dormant in transaction: no transaction for '.$this->policy()->int('dormancy_months').' months. Dormant in balance: savings below ₱'.number_format($threshold, 2)
+                .". Either, for {$months} consecutive months, terminates participation (Policy VII.2).")
             ->columns([
                 ...$this->memberColumns(),
-                Tables\Columns\TextColumn::make('savings_account_status')->label('Masterlist flag')->badge()->color('warning')->placeholder('—'),
-                Tables\Columns\TextColumn::make('last_activity_date')->label('Last activity')->date()->placeholder('Not recorded')->visibleFrom('lg'),
+                Tables\Columns\TextColumn::make('dormancy_type')->label('Dormant in')
+                    ->state(fn (Member $record) => match (true) {
+                        $record->savings_account_status === 'dormant-txn', (bool) $record->last_activity_date?->lte($inactiveSince) => 'Transaction',
+                        $record->savings_account_status === 'dormant-bal', $record->savings_balance !== null && (float) $record->savings_balance < $threshold => 'Balance',
+                        default => 'Transaction',
+                    })
+                    ->badge()
+                    ->color('warning'),
+                Tables\Columns\TextColumn::make('last_activity_date')->label('Last transaction')->date()->placeholder('Not recorded')->visibleFrom('lg'),
                 Tables\Columns\TextColumn::make('dormant_since')->date()->sortable()->placeholder('—'),
                 Tables\Columns\TextColumn::make('termination_on')->label('Terminates on')
                     ->state(fn (Member $record) => $record->dormant_since?->copy()->addMonthsNoOverflow($months))
@@ -519,9 +565,20 @@ class Monitoring extends Page implements HasTable
                 Tables\Columns\TextColumn::make('savings_balance')->money('PHP')->visibleFrom('md'),
             ])
             ->filters([
-                Tables\Filters\Filter::make('approaching')->label('Termination within '.$this->policy()->int('dormancy_warning_days').' days')
-                    ->query(fn (Builder $query) => $query->whereIn('id', app(MonitoringService::class)->dormancyApproachingTermination($this->policy()->int('dormancy_warning_days'))->select('id'))),
-                $this->branchFilter(),
+                // One dropdown: the kind of dormancy, or the accounts close to termination.
+                Tables\Filters\SelectFilter::make('dormancy_type')->label('Dormant in')->placeholder('All dormant accounts')
+                    ->options([
+                        'transaction' => 'Dormant in transaction',
+                        'balance' => 'Dormant in balance',
+                        'approaching' => 'Terminating within '.$this->policy()->int('dormancy_warning_days').' days',
+                    ])
+                    ->query(fn (Builder $query, array $data) => match ($data['value'] ?? null) {
+                        'transaction' => $inTransaction($query),
+                        'balance' => $inBalance($query),
+                        'approaching' => $query->whereIn('id', app(MonitoringService::class)->dormancyApproachingTermination($this->policy()->int('dormancy_warning_days'))->select('id')),
+                        default => $query,
+                    }),
+                ...$this->memberFilters(),
             ])
             ->headerActions([$this->smsToAllAction()])
             ->actions([$this->smsAction()])

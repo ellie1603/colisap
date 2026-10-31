@@ -23,7 +23,7 @@ class DatabaseSeederTest extends TestCase
         $this->assertFalse(Hash::check('password', $admin->password));
         $this->assertTrue($admin->hasRole('admin'));
         $this->assertTrue(User::where('email', 'crs@bmpc.coop')->sole()->hasRole('crs'));
-        $this->assertSame(['admin', 'crs'], Role::orderBy('name')->pluck('name')->all());
+        $this->assertSame(['admin', 'branch_manager', 'crs'], Role::orderBy('name')->pluck('name')->all());
     }
 
     public function test_reseeding_does_not_reset_existing_account_passwords(): void

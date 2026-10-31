@@ -9,13 +9,17 @@ use App\Models\ImportBatch;
 use App\Models\ImportRow;
 use App\Models\Member;
 use App\Models\SavingsTransaction;
+use App\Services\Colisap\MemberStatusEngine;
 use App\Services\Policy\PolicySettings;
 use App\Services\Reports\SpreadsheetWriter;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
@@ -810,6 +814,8 @@ class MasterlistImportService
 
     /**
      * Writes one chunk of staged rows; each row is its own savepoint, so one bad row is skipped, not the chunk.
+     * For speed the chunk's members are looked up in one query, and the rows' results and the new members'
+     * applications are written together at the end instead of one by one.
      *
      * @param  Collection<int, ImportRow>  $rows
      * @return array{created: int, updated: int, unchanged: int}
@@ -817,35 +823,107 @@ class MasterlistImportService
     private function importRows(ImportBatch $batch, Collection $rows): array
     {
         $tally = ['created' => 0, 'updated' => 0, 'unchanged' => 0];
+        $results = [];
+        $applications = [];
+
+        // Acct. Numbers are matched across every branch, whoever runs the import, so no member is created twice.
+        $members = Branch::withoutRestriction(fn () => Member::withTrashed()
+            ->whereIn('account_no', $rows->pluck('account_no')->filter()->unique()->values())
+            ->get()
+            ->keyBy('account_no')
+            ->all());
 
         // No per-record audit entries: the batch, its source rows and the member change history are the import's trail.
-        AuditLog::withoutRecording(function () use ($batch, $rows, &$tally) {
+        AuditLog::withoutRecording(function () use ($batch, $rows, &$tally, &$results, &$applications, &$members) {
             foreach ($rows as $row) {
                 try {
-                    // Acct. Numbers are matched across every branch, whoever runs the import, so no member is created twice.
-                    $result = Branch::withoutRestriction(fn () => DB::transaction(fn () => $this->importRow($batch, $row)));
+                    [$result, $member, $application] = Branch::withoutRestriction(
+                        fn () => DB::transaction(fn () => $this->importRow($batch, $row, $members[$row->account_no] ?? null)),
+                    );
+
+                    $members[$row->account_no] = $member;
+                    $results[$row->id] = [$result, $member->id];
+                    $applications[] = $application;
                     $tally[$result]++;
                 } catch (Throwable $exception) {
-                    report($exception);
+                    // The reason is kept on the row (and in "Download issues"); a short log line is enough, as a full
+                    // trace for every row of a large file filled gigabytes of log and slowed the import to hours.
+                    Log::warning('Masterlist import row failed', ['import' => $batch->id, 'row' => $row->id, 'error' => Str::limit($exception->getMessage(), 300)]);
+
+                    // The member may have been changed in memory before the row was rolled back: read it again.
+                    unset($members[$row->account_no]);
+                    $members += Branch::withoutRestriction(fn () => Member::withTrashed()->where('account_no', $row->account_no)->get()->keyBy('account_no')->all());
 
                     $row->update([
                         'status' => 'skipped',
-                        'errors' => [...($row->errors ?? []), 'Import failed: '.$exception->getMessage()],
+                        'errors' => [...($row->errors ?? []), 'Import failed: '.$this->failureReason($exception)],
                     ]);
                 }
             }
         });
 
+        foreach (array_chunk(array_values(array_filter($applications)), 500) as $chunk) {
+            DB::table('applications')->insert($chunk);
+        }
+
+        $this->markImported($results);
+
         return $tally;
     }
 
     /**
-     * @return 'created'|'updated'|'unchanged'
+     * A failed row's reason in words staff can act on, without the database's SQL.
      */
-    private function importRow(ImportBatch $batch, ImportRow $row): string
+    private function failureReason(Throwable $exception): string
+    {
+        $message = $exception instanceof QueryException
+            ? Str::before($exception->getMessage(), ' (Connection:')
+            : $exception->getMessage();
+
+        return Str::limit($message, 300);
+    }
+
+    /**
+     * Record each imported row's result and member in one statement.
+     *
+     * @param  array<int, array{0: string, 1: int}>  $results  row id => [result, member id]
+     */
+    private function markImported(array $results): void
+    {
+        if ($results === []) {
+            return;
+        }
+
+        $resultCase = 'case id';
+        $memberCase = 'case id';
+        $resultBindings = [];
+        $memberBindings = [];
+
+        foreach ($results as $rowId => [$result, $memberId]) {
+            $resultCase .= ' when ? then ?';
+            $memberCase .= ' when ? then ?';
+            array_push($resultBindings, $rowId, $result);
+            array_push($memberBindings, $rowId, $memberId);
+        }
+
+        $ids = array_keys($results);
+
+        DB::update(
+            "update import_rows set status = 'imported', result = ({$resultCase} end), member_id = ({$memberCase} end), updated_at = ? where id in (".implode(',', array_fill(0, count($ids), '?')).')',
+            [...$resultBindings, ...$memberBindings, now(), ...$ids],
+        );
+    }
+
+    /**
+     * Write one row into its member (already looked up by the caller, or null when there is none). The row's
+     * result is recorded by the caller, and a new member's application is returned to be inserted with the others.
+     *
+     * @return array{0: 'created'|'updated'|'unchanged', 1: Member, 2: ?array<string, mixed>}
+     */
+    private function importRow(ImportBatch $batch, ImportRow $row, ?Member $member): array
     {
         if (($row->data['mode'] ?? null) === 'contacts') {
-            return $this->importContactNumber($row);
+            return $this->importContactNumber($row, $member);
         }
 
         $asOf = $batch->as_of_date;
@@ -853,7 +931,6 @@ class MasterlistImportService
             ? [$this->referenceField($row->data['kind']) => $row->data['value'], 'account_no' => $row->account_no]
             : $row->data;
 
-        $member = Member::withTrashed()->where('account_no', $row->account_no)->first();
         $isNew = $member === null;
 
         $member ??= new Member([
@@ -932,19 +1009,24 @@ class MasterlistImportService
             $changed = true;
         }
 
+        if ($isNew) {
+            app(MemberStatusEngine::class)->applyStartingStatus($member);
+        }
+
         $member->withChangeReason("Masterlist import #{$batch->id} ({$row->sheet} row {$row->row_number})", 'import')->save();
 
-        if ($isNew && $member->approval_date) {
-            Application::create([
-                'member_id' => $member->id,
-                'type' => 'new',
-                'category' => $member->category,
-                'application_date' => $member->application_date ?? $member->approval_date,
-                'status' => 'approved',
-                'approved_at' => $member->approval_date,
-                'remarks' => "Recorded from masterlist import #{$batch->id}",
-            ]);
-        }
+        $application = $isNew && $member->approval_date ? [
+            'member_id' => $member->id,
+            'type' => 'new',
+            'category' => $member->category,
+            'application_date' => ($member->application_date ?? $member->approval_date)->toDateString(),
+            'status' => 'approved',
+            'approved_at' => $member->approval_date->toDateTimeString(),
+            'remarks' => "Recorded from masterlist import #{$batch->id}",
+            'created_by' => Auth::id(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ] : null;
 
         $delta = ($data['savings_balance'] ?? null) === null ? 0.0 : round((float) $data['savings_balance'] - (float) $member->savings_balance, 2);
 
@@ -963,22 +1045,21 @@ class MasterlistImportService
             $member->refreshStatus();
         }
 
-        $result = $isNew ? 'created' : ($changed ? 'updated' : 'unchanged');
-
-        $row->update(['status' => 'imported', 'result' => $result, 'member_id' => $member->id]);
-
-        return $result;
+        return [$isNew ? 'created' : ($changed ? 'updated' : 'unchanged'), $member, $application];
     }
 
     /**
      * A row of a mobile-number list changes exactly one thing: the contact number of the member it names.
      * Name, branch, status, category, segment and savings are never touched.
      *
-     * @return 'updated'|'unchanged'
+     * @return array{0: 'updated'|'unchanged', 1: Member, 2: null}
      */
-    private function importContactNumber(ImportRow $row): string
+    private function importContactNumber(ImportRow $row, ?Member $member): array
     {
-        $member = Member::withTrashed()->where('account_no', $row->account_no)->firstOrFail();
+        if ($member === null) {
+            throw new RuntimeException("No member has Acct. Number {$row->account_no}");
+        }
+
         $member->contact_number = $row->data['contact_number'];
         $result = $member->isDirty('contact_number') ? 'updated' : 'unchanged';
 
@@ -986,9 +1067,7 @@ class MasterlistImportService
             $member->save();
         }
 
-        $row->update(['status' => 'imported', 'result' => $result, 'member_id' => $member->id]);
-
-        return $result;
+        return [$result, $member, null];
     }
 
     private function referenceField(string $kind): string

@@ -24,8 +24,8 @@ class InitialsAvatarProvider implements AvatarProvider
             ->join('');
 
         $svg = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">'
-            .'<rect width="64" height="64" fill="#2E3A8C"/>'
-            .'<text x="50%" y="50%" dy=".35em" text-anchor="middle" fill="#FFFFFF" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="600">'
+            .'<rect width="64" height="64" fill="#EAF4FB"/>'
+            .'<text x="50%" y="50%" dy=".35em" text-anchor="middle" fill="#176FA6" font-family="Segoe UI, Arial, sans-serif" font-size="26" font-weight="600">'
             .e($initials ?: '?')
             .'</text></svg>';
 

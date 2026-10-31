@@ -46,7 +46,7 @@ class EditApplication extends EditRecord
 
     protected function getHeaderActions(): array
     {
-        $canDecide = fn () => $this->record->status === 'pending' && (Auth::user()?->can('applications.manage') ?? false);
+        $canDecide = fn () => $this->record->status === 'pending' && $this->record->canBeDecidedBy(Auth::user());
 
         return [
             Actions\Action::make('approve')
@@ -111,7 +111,7 @@ class EditApplication extends EditRecord
                 ->label('Reopen application')
                 ->icon('heroicon-o-arrow-uturn-left')
                 ->color('warning')
-                ->visible(fn () => $this->record->status === 'rejected' && (Auth::user()?->can('applications.manage') ?? false))
+                ->visible(fn () => $this->record->status === 'rejected' && $this->record->canBeDecidedBy(Auth::user()))
                 ->requiresConfirmation()
                 ->modalDescription('Puts this rejected application back to Pending so it can be reviewed and approved. Use this instead of filing a second application for the same member.')
                 ->modalSubmitActionLabel('Reopen')

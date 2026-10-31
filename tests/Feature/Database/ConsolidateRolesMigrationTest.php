@@ -27,7 +27,7 @@ class ConsolidateRolesMigrationTest extends TestCase
         $this->assertSame([Permissions::ADMIN], $superAdmin->fresh()->getRoleNames()->all());
         $this->assertSame([Permissions::CRS], $auditor->fresh()->getRoleNames()->all());
         $this->assertSame([Permissions::ADMIN], $admin->fresh()->getRoleNames()->all());
-        $this->assertSame([Permissions::ADMIN, Permissions::CRS], Role::orderBy('name')->pluck('name')->all());
+        $this->assertSame([Permissions::ADMIN, Permissions::BRANCH_MANAGER, Permissions::CRS], Role::orderBy('name')->pluck('name')->all(), 'The Branch Manager role was added later and is kept.');
         $this->assertFalse(Permission::where('name', 'like', 'claims.%')->orWhere('name', 'like', 'contributions.%')->exists());
         $this->assertTrue($auditor->fresh()->can('members.update'));
         $this->assertFalse($auditor->fresh()->can('users.manage'));

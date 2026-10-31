@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\MemberResource\Pages;
 use App\Filament\Resources\MemberResource\RelationManagers;
+use App\Filament\Tables\TableFilters;
 use App\Models\Branch;
 use App\Models\Member;
 use App\Services\Policy\PolicySettings;
@@ -174,7 +175,7 @@ class MemberResource extends Resource
                                 Infolists\Components\TextEntry::make('segment')->label('Segmentation')->badge()->default('—')
                                     ->formatStateUsing(fn (Member $record) => Member::segmentLabel($record->segment))
                                     ->color(fn (Member $record) => $record->segment ? 'primary' : 'gray'),
-                                Infolists\Components\TextEntry::make('savings_balance')->label('Savings balance')->money('PHP')
+                                Infolists\Components\TextEntry::make('savings_balance')->label('Savings balance')->money('PHP')->placeholder('Not known')
                                     ->color(fn (Member $record) => $record->meetsMinimumBalance() ? null : 'danger')
                                     ->helperText(fn (Member $record) => 'Minimum ₱'.number_format($record->minimumBalance(), 2)),
                                 Infolists\Components\TextEntry::make('effectivity')->label('Effectivity date')
@@ -240,7 +241,7 @@ class MemberResource extends Resource
                             ->icon('heroicon-m-banknotes')
                             ->columns(['default' => 1, 'sm' => 2, 'lg' => 4])
                             ->schema([
-                                Infolists\Components\TextEntry::make('savings_balance')->money('PHP'),
+                                Infolists\Components\TextEntry::make('savings_balance')->money('PHP')->placeholder('Not known'),
                                 Infolists\Components\TextEntry::make('savings_balance_as_of')->label('Balance as of')->date()->placeholder('—'),
                                 Infolists\Components\TextEntry::make('required')->label('Required balance')->state(fn (Member $record) => $record->minimumBalance())->money('PHP'),
                                 Infolists\Components\TextEntry::make('shortfall')->state(fn (Member $record) => $record->balanceShortfall())->money('PHP')
@@ -268,6 +269,7 @@ class MemberResource extends Resource
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query) => $query->with('branch'))
+            ->searchPlaceholder('Search name or Acct. Number')
             ->columns([
                 Tables\Columns\TextColumn::make('account_no')
                     ->label('Acct. Number')
@@ -285,6 +287,7 @@ class MemberResource extends Resource
                     ->label('Branch')
                     ->sortable()
                     ->visibleFrom('md'),
+
                 Tables\Columns\TextColumn::make('segment')
                     ->label('Segmentation')
                     ->badge()
@@ -313,46 +316,38 @@ class MemberResource extends Resource
                 Tables\Columns\TextColumn::make('savings_balance')
                     ->label('Saving Balance')
                     ->money('PHP')
+                    ->placeholder('Not known')
                     ->sortable()
                     ->alignEnd()
                     ->color(fn (Member $record) => $record->meetsMinimumBalance() ? null : 'danger')
                     ->visibleFrom('md'),
+                // The other details (name parts, birthdate and age, sex, contact number) are on the member's page:
+                // every extra column makes this list slower to draw.
+                Tables\Columns\TextColumn::make('last_activity_date')->label('Last transaction date')->date()->placeholder('—')->sortable()->visibleFrom('xl'),
+                Tables\Columns\TextColumn::make('remarks')
+                    ->state(fn (Member $record) => $record->accountRemarks())
+                    ->placeholder('—')
+                    ->badge()
+                    ->color(fn (?string $state) => in_array($state, ['Deceased', 'Deactivated'], true) ? 'danger' : 'warning')
+                    ->visibleFrom('lg'),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('status')
-                    ->options(Member::STATUSES)
-                    ->multiple(),
+                    ->placeholder('All statuses')
+                    ->options(Member::STATUSES),
                 Tables\Filters\SelectFilter::make('branch_id')
                     ->label('Branch')
                     ->options(fn () => Branch::options())
-                    ->multiple()
-                    ->searchable()
                     // Staff limited to one branch only ever see that branch, so the filter would have one choice.
                     ->visible(fn () => Branch::restrictedId() === null),
-                Tables\Filters\SelectFilter::make('segment')
-                    ->label('Segmentation')
-                    ->options([...Member::SEGMENTS, 'none' => 'Unassigned'])
-                    ->multiple()
-                    ->query(fn (Builder $query, array $data) => $query->when($data['values'] ?? [], function (Builder $query, array $values) {
-                        $query->where(function (Builder $query) use ($values) {
-                            $segments = array_values(array_diff($values, ['none']));
-
-                            if ($segments !== []) {
-                                $query->whereIn('segment', $segments);
-                            }
-
-                            if (in_array('none', $values, true)) {
-                                $query->orWhereNull('segment');
-                            }
-                        });
-                    })),
-                Tables\Filters\SelectFilter::make('category')
-                    ->label('Category')
-                    ->options(Member::categoryOptions()),
+                TableFilters::segmentation(),
+                TableFilters::category(),
                 Tables\Filters\TrashedFilter::make()
-                    ->label('Archived members'),
+                    ->label('Archived members')
+                    ->placeholder('Current members')
+                    ->trueLabel('Current and archived')
+                    ->falseLabel('Archived only'),
             ])
-            ->filtersFormColumns(2)
             ->persistFiltersInSession()
             ->actions([
                 // No "view" button: clicking a row already opens the member, and a button per row slows the list.

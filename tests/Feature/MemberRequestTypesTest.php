@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Filament\Resources\ApplicationResource;
 use App\Filament\Resources\ApplicationResource\Pages\EditApplication;
 use App\Filament\Resources\ApplicationResource\Pages\ListApplications;
 use App\Models\Application;
 use App\Models\Branch;
 use App\Models\Member;
+use App\Models\User;
 use App\Services\Access\Permissions;
 use Filament\Forms\Components\Select;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
@@ -16,13 +18,13 @@ use Tests\Concerns\ActsAsRole;
 use Tests\TestCase;
 
 /**
- * The CRS Officer's member transactions: new member, active member, upgrade and re-application (with OR number).
+ * The CRS Officer's member transactions: new member, upgrade and re-application (with OR number); "active member" ones filed before are still decided.
  */
 class MemberRequestTypesTest extends TestCase
 {
     use ActsAsRole, LazilyRefreshDatabase;
 
-    public function test_the_request_form_offers_the_four_types_without_an_empty_choice(): void
+    public function test_the_transaction_form_offers_new_upgrade_and_re_application_without_an_empty_choice(): void
     {
         $this->actingAsRole(Permissions::CRS);
 
@@ -30,50 +32,44 @@ class MemberRequestTypesTest extends TestCase
             ->mountAction('create')
             ->assertSee('New transaction')
             ->assertSee('New member')
-            ->assertSee('Active member')
             ->assertSee('Upgrade to 60K')
             ->assertSee('Re-application')
+            ->assertSee('Transaction date')
             ->assertFormFieldExists('type', 'mountedActionForm', fn (Select $field): bool => ! $field->canSelectPlaceholder()
-                && array_keys($field->getOptions()) === ['new', 'active', 'upgrade', 'reapplication']);
+                && array_keys($field->getOptions()) === ['new', 'upgrade', 'reapplication']);
     }
 
-    public function test_an_already_enrolled_member_is_added_as_active_with_their_original_approval_date(): void
-    {
-        $this->travelTo('2026-10-19 09:00:00');
-        $this->actingAsRole(Permissions::CRS);
-
-        Livewire::test(ListApplications::class)
-            ->callAction('create', data: [
-                'type' => 'active', 'account_no' => '00101777100', 'last_name' => 'Santos', 'first_name' => 'Maria',
-                'branch_id' => Branch::where('name', 'Barbaza')->value('id'), 'birthdate' => '1962-03-01', // over the entry age today: allowed, she joined in 2020
-                'savings_balance' => 2500, 'application_date' => '2026-10-19', 'member_since' => '2020-06-15', 'category' => '40000',
-            ])
-            ->assertHasNoActionErrors()
-            ->assertNotified('Transaction saved');
-
-        $request = Application::sole();
-        $this->assertSame(['active', 'pending', '2020-06-15'], [$request->type, $request->status, $request->member_since->toDateString()]);
-        $this->assertSame(0, Member::count(), 'Nobody is added before the Administrator approves.');
-
-        $this->actingAsRole(Permissions::ADMIN);
-        Livewire::test(EditApplication::class, ['record' => $request->getRouteKey()])
-            ->callAction('approve', ['approved_at' => '2026-10-19'])
-            ->assertNotified('Transaction approved');
-
-        $member = Member::sole();
-        $this->assertSame(['00101777100', '2020-06-15', 'active'], [$member->account_no, $member->approval_date->toDateString(), $member->status]);
-    }
-
-    public function test_an_active_member_request_needs_the_original_approval_date(): void
+    public function test_an_active_member_transaction_can_no_longer_be_filed(): void
     {
         $this->actingAsRole(Permissions::CRS);
 
         Livewire::test(ListApplications::class)
             ->callAction('create', data: [
                 'type' => 'active', 'account_no' => '00101777101', 'last_name' => 'Cruz', 'first_name' => 'Ana',
-                'branch_id' => Branch::where('name', 'Barbaza')->value('id'), 'birthdate' => '1980-01-01', 'savings_balance' => 800, 'category' => '40000',
+                'branch_id' => Branch::where('name', 'Barbaza')->value('id'), 'birthdate' => '1980-01-01', 'savings_balance' => 800,
+                'category' => '40000', 'member_since' => '2020-06-15',
             ])
-            ->assertHasActionErrors(['member_since']);
+            ->assertHasActionErrors(['type']);
+
+        $this->assertSame(0, Application::count());
+    }
+
+    public function test_an_active_member_transaction_filed_before_is_still_approved_with_its_original_approval_date(): void
+    {
+        $this->travelTo('2026-10-19 09:00:00');
+        $request = Application::factory()->applicant()->create([
+            'type' => 'active', 'account_no' => '00101777100', 'last_name' => 'Santos', 'first_name' => 'Maria',
+            'savings_balance' => 2500, 'application_date' => '2026-10-19', 'member_since' => '2020-06-15',
+        ]);
+
+        $this->actingAsRole(Permissions::ADMIN);
+        Livewire::test(ListApplications::class)->assertSee('Active member');
+        Livewire::test(EditApplication::class, ['record' => $request->getRouteKey()])
+            ->callAction('approve', ['approved_at' => '2026-10-19'])
+            ->assertNotified('Transaction approved');
+
+        $member = Member::sole();
+        $this->assertSame(['00101777100', '2020-06-15', 'active'], [$member->account_no, $member->approval_date->toDateString(), $member->status]);
     }
 
     public function test_an_upgrade_request_starts_the_upgrade_waiting_period_once_approved(): void
@@ -139,5 +135,53 @@ class MemberRequestTypesTest extends TestCase
             ->assertHasActionErrors(['or_number' => 'required']);
 
         $this->assertSame(0, Application::count());
+    }
+
+    private function actingAsBranchManagerOf(string $branchName): User
+    {
+        $manager = User::factory()->create(['is_active' => true, 'branch_id' => Branch::where('name', $branchName)->value('id')])
+            ->assignRole(Permissions::BRANCH_MANAGER);
+        $this->actingAs($manager);
+
+        return $manager;
+    }
+
+    public function test_the_branch_manager_approves_a_re_application_of_their_branch_sent_by_the_crs_officer(): void
+    {
+        $member = Member::factory()->terminated()->create(['account_no' => '00101777105', 'branch_id' => Branch::where('name', 'Barbaza')->value('id')]);
+        $this->actingAsRole(Permissions::CRS);
+
+        Livewire::test(ListApplications::class)
+            ->callAction('create', data: ['type' => 'reapplication', 'account_no' => '00101777105', 'application_date' => now()->toDateString(), 'category' => '40000', 'or_number' => 'OR-1001'])
+            ->assertHasNoActionErrors()
+            ->assertNotified('Transaction saved');
+
+        $reapplication = Application::sole();
+        $this->actingAsBranchManagerOf('Barbaza');
+
+        Livewire::test(ListApplications::class)
+            ->assertCanSeeTableRecords([$reapplication])
+            ->assertActionHidden('create')
+            ->assertActionHidden('importSavings');
+        Livewire::test(EditApplication::class, ['record' => $reapplication->getRouteKey()])
+            ->assertActionVisible('approve')
+            ->callAction('approve', ['approved_at' => now()->toDateString()])
+            ->assertNotified('Transaction approved');
+
+        $this->assertSame('approved', $reapplication->fresh()->status);
+        $this->assertSame('waiting', $member->fresh()->status, 'Reinstated, starting the waiting period again.');
+    }
+
+    public function test_the_branch_manager_decides_neither_another_branchs_re_applications_nor_new_members(): void
+    {
+        $kaliboReapplication = Application::factory()->reapplication()->create([
+            'member_id' => Member::factory()->terminated()->create(['branch_id' => Branch::where('name', 'Kalibo')->value('id')]),
+        ]);
+        $barbazaNewMember = Application::factory()->applicant()->create(['branch_id' => Branch::where('name', 'Barbaza')->value('id')]);
+        $manager = $this->actingAsBranchManagerOf('Barbaza');
+
+        $this->assertFalse($kaliboReapplication->canBeDecidedBy($manager));
+        $this->assertFalse($barbazaNewMember->canBeDecidedBy($manager), 'New members stay with the Administrator.');
+        $this->get(ApplicationResource::getUrl('edit', ['record' => $barbazaNewMember]))->assertForbidden();
     }
 }

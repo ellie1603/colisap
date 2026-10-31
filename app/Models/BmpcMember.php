@@ -31,6 +31,10 @@ class BmpcMember extends Model
         'contact_number',
         'address',
         'savings_balance',
+        'last_transaction_date',
+        'segment',
+        'category',
+        'remarks',
         'import_batch_id',
         'imported_by',
     ];
@@ -38,7 +42,28 @@ class BmpcMember extends Model
     protected $casts = [
         'birthdate' => 'date',
         'savings_balance' => 'decimal:2',
+        'last_transaction_date' => 'date',
     ];
+
+    /**
+     * What the Remarks column may say about the account.
+     *
+     * @var array<string, string>
+     */
+    public const REMARKS = [
+        'deactivated' => 'Deactivated',
+        'deceased' => 'Deceased',
+        'dormant-bal' => 'Dormant-bal',
+        'dormant-txn' => 'Dormant-txn',
+    ];
+
+    /**
+     * Age in whole years today, worked out from the birthdate.
+     */
+    public function age(): ?int
+    {
+        return $this->birthdate?->age;
+    }
 
     protected static function booted(): void
     {

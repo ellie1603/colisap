@@ -39,6 +39,7 @@ class ImportBatch extends Model
     public const TYPES = [
         'members' => 'COLISAP masterlist',
         'bmpc_members' => 'BMPC members',
+        'savings' => 'Savings balances',
     ];
 
     protected $fillable = [
@@ -111,6 +112,20 @@ class ImportBatch extends Model
     public function isBmpcMemberImport(): bool
     {
         return $this->type === 'bmpc_members';
+    }
+
+    public function isSavingsImport(): bool
+    {
+        return $this->type === 'savings';
+    }
+
+    /**
+     * The COLISAP masterlist import, with its checking, preview and approval steps; the other uploads
+     * (BMPC members, savings balances) are written straight away.
+     */
+    public function isMasterlistImport(): bool
+    {
+        return $this->type === 'members';
     }
 
     /**

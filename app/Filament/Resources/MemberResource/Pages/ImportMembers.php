@@ -42,6 +42,8 @@ class ImportMembers extends Page implements HasTable
 
     private const IMPORT_CHUNK = 200;
 
+    private const IMPORT_SECONDS_PER_REQUEST = 3;
+
     #[Url(as: 'batch')]
     public ?int $batchId = null;
 
@@ -413,7 +415,12 @@ class ImportMembers extends Page implements HasTable
             return;
         }
 
-        $processed = $this->service()->importChunk($batch, self::IMPORT_CHUNK);
+        // Several chunks per request: each round trip redraws the page, so fewer, fuller requests finish sooner.
+        $deadline = microtime(true) + self::IMPORT_SECONDS_PER_REQUEST;
+
+        do {
+            $processed = $this->service()->importChunk($batch, self::IMPORT_CHUNK);
+        } while ($processed > 0 && microtime(true) < $deadline);
 
         if ($processed === 0) {
             $batch->refresh();

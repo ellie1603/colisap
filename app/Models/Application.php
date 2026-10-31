@@ -53,6 +53,22 @@ class Application extends Model
     }
 
     /**
+     * What staff may file now: new member, upgrade and re-application. "Active member" is no longer filed;
+     * transactions recorded with it keep their label.
+     *
+     * @return array<string, string>
+     */
+    public static function filingTypeOptions(): array
+    {
+        return array_diff_key(self::typeOptions(), array_flip(self::RETIRED_TYPES));
+    }
+
+    /**
+     * @var list<string>
+     */
+    public const RETIRED_TYPES = ['active'];
+
+    /**
      * @var array<string, string>
      */
     public const STATUSES = [
@@ -216,6 +232,33 @@ class Application extends Model
     public function applicantBranchName(): ?string
     {
         return ($this->member?->branch ?? $this->branch)?->name;
+    }
+
+    public function applicantBranchCode(): ?string
+    {
+        return ($this->member?->branch ?? $this->branch)?->code;
+    }
+
+    /**
+     * Who approves or rejects this transaction: the Administrator any of them, and a Branch Manager the
+     * re-applications of their own branch (sent to them by the CRS Officers).
+     */
+    public function canBeDecidedBy(?User $user): bool
+    {
+        if ($user === null || ! $user->is_active) {
+            return false;
+        }
+
+        if ($user->can('applications.manage')) {
+            return true;
+        }
+
+        $branchId = $this->member?->branch_id ?? $this->branch_id;
+
+        return $this->type === 'reapplication'
+            && $user->can('applications.approve_reapplications')
+            && $user->branch_id !== null
+            && $branchId === $user->branch_id;
     }
 
     /**

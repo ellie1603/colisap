@@ -99,7 +99,7 @@ class GeneralPolicyTest extends TestCase
         Livewire::test(ListMembers::class)
             ->assertSeeHtml('wire:click="resetTableFiltersForm"')
             ->assertDontSeeHtml('fi-ta-col-toggle')
-            ->filterTable('branch_id', [$barbaza->branch_id])
+            ->filterTable('branch_id', $barbaza->branch_id)
             ->assertCanNotSeeTableRecords([$kalibo])
             ->call('resetTableFiltersForm')
             ->assertCanSeeTableRecords([$barbaza, $kalibo]);

@@ -11,6 +11,7 @@ use App\Models\Member;
 use App\Models\SavingsTransaction;
 use App\Services\Masterlist\MasterlistImportService;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Tests\Concerns\CreatesMasterlistWorkbooks;
@@ -101,6 +102,30 @@ class MasterlistImportServiceTest extends TestCase
         $this->assertSame([null, '60000', 'waiting'], [$ana->segment, $ana->category, $ana->status], '#N/A segment stays Unassigned; 52 days into the waiting period.');
         $this->assertSame('approved', $juan->applications()->sole()->status);
         $this->assertSame([$batch->id, 'Barbaza', 5], [$juan->import_batch_id, $juan->source_sheet, $juan->source_row]);
+    }
+
+    public function test_a_list_without_savings_balances_imports_every_member_without_replenishment_notices(): void
+    {
+        $batch = $this->import($this->stage([
+            'Barbaza' => [
+                ['CIFKey', 'Member Name', 'Date Of Membership', 'Classification', 'Membership Status'],
+                ['00101959720', 'DELA CRUZ, JUAN A.', '2023-12-22', 'NON-MIGS', 'ACTIVE'],
+                ['00101959721', 'SANTOS, MARIA B.', '2026-09-01', 'NON-MIGS', 'ACTIVE'],
+            ],
+        ]));
+
+        $this->assertSame([2, 0], [$batch->created_count, ImportRow::where('status', 'skipped')->count()]);
+        $this->assertSame(0, DB::table('replenishment_notices')->count());
+
+        $juan = Member::where('account_no', '00101959720')->sole();
+        $this->assertSame(['active', null], [$juan->status, $juan->savings_balance]);
+        $this->assertSame('approved', $juan->applications()->sole()->status);
+
+        // Written once with its starting status: one history entry, naming the import.
+        $this->assertSame([[null, 'active', "Masterlist import #{$batch->id} (Barbaza row 2)"]],
+            $juan->histories()->get()->map(fn ($history) => [$history->old_value, $history->new_value, $history->reason])->all());
+        $this->assertSame(['created', $juan->id], [$batch->rows()->where('account_no', '00101959720')->value('result'), $batch->rows()->where('account_no', '00101959720')->value('member_id')]);
+        $this->assertSame('waiting', Member::where('account_no', '00101959721')->value('status'));
     }
 
     public function test_existing_accounts_are_updated_never_duplicated(): void

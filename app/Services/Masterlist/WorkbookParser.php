@@ -178,6 +178,32 @@ class WorkbookParser
     }
 
     /**
+     * The "Last transaction date" column of a savings or member list ("Last Txn Date", "Date of last transaction"…).
+     *
+     * @param  array<int, string>  $headers
+     */
+    public function lastTransactionColumn(array $headers): ?int
+    {
+        foreach ($headers as $column => $header) {
+            $normalized = preg_replace('/[^a-z]/', '', Str::lower($header)) ?? '';
+
+            if (in_array($normalized, self::LAST_TRANSACTION_HEADERS, true)) {
+                return $column;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @var list<string>
+     */
+    private const LAST_TRANSACTION_HEADERS = [
+        'lasttransactiondate', 'lasttransaction', 'dateoflasttransaction', 'lasttransdate', 'lasttrandate', 'lasttxndate',
+        'lasttrxdate', 'lasttxn', 'lastactivitydate', 'lastactivity', 'datelasttransaction', 'lasttransactiondt',
+    ];
+
+    /**
      * A mobile-number list: Acct. Number, optionally the name, and a contact number — nothing else.
      * Importing one only updates the contact number of members that already exist.
      *

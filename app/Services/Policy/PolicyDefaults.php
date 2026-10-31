@@ -33,7 +33,8 @@ final class PolicyDefaults
         // Dormancy & termination (VII)
         'dormancy_months' => ['group' => 'Dormancy', 'label' => 'Inactivity before an account is dormant (months)', 'type' => 'int', 'value' => 3],
         'dormancy_termination_months' => ['group' => 'Dormancy', 'label' => 'Consecutive dormant months before COLISAP termination', 'type' => 'int', 'value' => 3],
-        'dormancy_activity_source' => ['group' => 'Dormancy', 'label' => 'What counts as account activity', 'type' => 'string', 'value' => 'masterlist_flag', 'options' => [
+        'dormant_balance_threshold' => ['group' => 'Dormancy', 'label' => 'Savings below this are dormant in balance (₱)', 'type' => 'decimal', 'value' => 2000, 'help' => 'Set by the savings import as dormant-bal. Dormant in balance — like dormant in transaction (no transaction for the inactivity period above) — for the consecutive dormant months below ends COLISAP participation.'],
+        'dormancy_activity_source' => ['group' => 'Dormancy', 'label' => 'What counts as account activity', 'type' => 'string', 'value' => 'both', 'options' => [
             'masterlist_flag' => 'Dormancy flag from the masterlist (dormant-txn / dormant-bal)',
             'recorded_activity' => 'Savings transactions recorded in this system',
             'both' => 'Either of the above',

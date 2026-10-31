@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\Auditable;
 use App\Models\Concerns\BelongsToActiveMember;
+use App\Services\Colisap\MemberStatusEngine;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -99,6 +100,11 @@ class SavingsTransaction extends Model
         if ($isNew && in_array($this->type, self::ACTIVITY_TYPES, true)
             && ($member->last_activity_date === null || $this->transaction_date->gt($member->last_activity_date))) {
             $member->last_activity_date = $this->transaction_date;
+        }
+
+        // A deposit or withdrawal shows the account's real activity and balance, so its dormancy is re-read from them.
+        if ($isNew && in_array($this->type, self::ACTIVITY_TYPES, true)) {
+            $member->savings_account_status = app(MemberStatusEngine::class)->savingsDormancyFlag((float) $member->savings_balance, $member->last_activity_date);
         }
 
         if ($isNew) {

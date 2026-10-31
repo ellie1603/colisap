@@ -434,8 +434,30 @@ class Member extends Model
         return $this->policy()->minimumBalanceFor($this->category);
     }
 
+    /**
+     * The account remark shown in lists: Deceased, Deactivated (terminated or withdrawn), or the savings account's
+     * Dormant-bal / Dormant-txn flag; null when none applies.
+     */
+    public function accountRemarks(): ?string
+    {
+        return match (true) {
+            $this->status === 'deceased' => 'Deceased',
+            in_array($this->status, ['terminated', 'withdrawn'], true) => 'Deactivated',
+            $this->savings_account_status === 'dormant-bal' => 'Dormant-bal',
+            $this->savings_account_status === 'dormant-txn' => 'Dormant-txn',
+            default => null,
+        };
+    }
+
+    /**
+     * How much the savings fall short of the maintaining balance; nothing while the balance is not known.
+     */
     public function balanceShortfall(): float
     {
+        if ($this->savings_balance === null) {
+            return 0.0;
+        }
+
         return max(0, round($this->minimumBalance() - (float) $this->savings_balance, 2));
     }
 
@@ -474,7 +496,9 @@ class Member extends Model
             $issues[] = 'Status is '.(self::STATUSES[$this->status] ?? $this->status);
         }
 
-        if (! $this->meetsMinimumBalance()) {
+        if ($this->savings_balance === null) {
+            $issues[] = 'Savings balance not known yet — import the branch savings list to check the maintaining balance';
+        } elseif (! $this->meetsMinimumBalance()) {
             $issues[] = 'Savings below ₱'.number_format($this->minimumBalance(), 2).' maintaining balance (short ₱'.number_format($this->balanceShortfall(), 2).')';
         }
 

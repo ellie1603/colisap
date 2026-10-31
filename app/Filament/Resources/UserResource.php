@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rules\Password;
+use Spatie\Permission\Models\Role;
 
 class UserResource extends Resource
 {
@@ -85,12 +86,19 @@ class UserResource extends Resource
                     ->disabled(fn (?User $record) => $record?->is(Auth::user()) ?? false)
                     ->helperText(fn (?User $record) => $record?->is(Auth::user())
                         ? 'You cannot change your own roles.'
-                        : 'Administrator: full access, including users, roles, branches, policy settings and the audit log. CRS Officer: adds member transactions (new member, active member, upgrade, re-application), updates member details, and imports or exports the Excel masterlist.')
+                        : 'Administrator: full access, including users, roles, branches, policy settings and the audit log. CRS Officer: registers and encodes members (new member, upgrade, re-application), and imports or exports the Excel masterlist. Branch Manager: views the dashboard, members, BMPC members and monitoring of their branch, and approves the re-applications CRS Officers send.')
+                    ->live()
                     ->required(),
                 Forms\Components\Select::make('branch_id')
                     ->label('Home branch')
                     ->options(fn () => Branch::options())
-                    ->helperText('A CRS Officer with a home branch sees only that branch\'s members, dashboard, monitoring and reports. Leave blank to show every branch. Administrators always see every branch.')
+                    ->helperText('A CRS Officer or Branch Manager with a home branch sees only that branch\'s members, dashboard, monitoring and reports; a Branch Manager needs one, as it decides whose re-applications they approve. Leave blank to show every branch. Administrators always see every branch.')
+                    // A Branch Manager approves the re-applications of their own branch, so they must have one.
+                    ->required(fn (Forms\Get $get) => in_array(
+                        Role::where('name', Permissions::BRANCH_MANAGER)->value('id'),
+                        array_map('intval', (array) $get('roles')),
+                        true,
+                    ))
                     ->searchable(),
                 Forms\Components\Toggle::make('is_active')
                     ->label('Account active')

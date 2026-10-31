@@ -137,6 +137,32 @@ class MemberStatusEngineTest extends TestCase
         $this->assertSame($expectsNotice, $member->replenishmentNotices()->where('status', 'open')->exists());
     }
 
+    public function test_savings_are_dormant_in_transaction_after_three_months_without_one_or_in_balance_below_two_thousand(): void
+    {
+        $engine = app(MemberStatusEngine::class);
+
+        $this->assertSame('dormant-txn', $engine->savingsDormancyFlag(5000, now()->subMonths(3)));
+        $this->assertSame('dormant-bal', $engine->savingsDormancyFlag(1999.99, now()->subMonths(2)));
+        $this->assertNull($engine->savingsDormancyFlag(2000, now()->subMonths(2)));
+        $this->assertNull($engine->savingsDormancyFlag(null, null), 'Nothing known, nothing flagged.');
+    }
+
+    public function test_a_member_dormant_in_balance_for_three_months_is_terminated(): void
+    {
+        $member = Member::factory()->create(['savings_balance' => 1200, 'savings_account_status' => 'dormant-bal', 'savings_balance_as_of' => now()->subMonths(3)]);
+
+        $this->assertSame('terminated', $this->evaluate($member)->status);
+    }
+
+    public function test_a_member_whose_balance_is_not_known_gets_no_replenishment_notice(): void
+    {
+        $member = Member::factory()->create(['savings_balance' => null]);
+
+        $this->evaluate($member);
+
+        $this->assertFalse($member->replenishmentNotices()->exists(), 'A blank balance is unknown, not ₱0.');
+    }
+
     public function test_notice_records_shortfall_and_fifteen_day_deadline(): void
     {
         $member = Member::factory()->create(['savings_balance' => 320]);

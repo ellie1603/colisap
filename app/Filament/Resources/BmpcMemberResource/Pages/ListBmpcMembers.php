@@ -9,6 +9,7 @@ use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ListRecords;
+use Filament\Support\Enums\MaxWidth;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Throwable;
@@ -55,13 +56,23 @@ class ListBmpcMembers extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            Actions\CreateAction::make()
+                ->label('Add member')
+                ->icon('heroicon-o-plus')
+                ->modalHeading('Add BMPC member')
+                ->modalDescription('Add one member of the coop by hand. Leave a field empty when it is not known; the next import of the same Acct. Number fills it in.')
+                ->modalSubmitActionLabel('Add member')
+                ->modalWidth(MaxWidth::FiveExtraLarge)
+                ->createAnother(false)
+                ->mutateFormDataUsing(fn (array $data): array => BmpcMemberResource::withCreationDefaults($data))
+                ->successNotificationTitle('Member added'),
             Actions\Action::make('import')
                 ->label('Import Excel')
                 ->icon('heroicon-o-arrow-up-tray')
                 ->visible(Auth::user()?->can('bmpc_members.import') ?? false)
                 ->disabled(fn () => $this->importFile !== null)
                 ->modalHeading('Import BMPC members')
-                ->modalDescription('Upload the coop\'s member list. The system finds the account number (or CIF Key), name, branch, birthdate, contact number and savings balance, and ignores every other column. Members already here are updated; new ones are added right away.')
+                ->modalDescription('Upload the coop\'s member list. The system finds the account number (or CIF Key), name, branch, birthdate, sex, contact number, savings balance, last transaction date, segmentation, category and remarks (deactivated, deceased, dormant-bal, dormant-txn), and ignores every other column. A detail the file does not have is left empty. Members already here are updated; new ones are added right away.')
                 ->modalSubmitActionLabel('Import')
                 ->form([
                     Forms\Components\FileUpload::make('file')

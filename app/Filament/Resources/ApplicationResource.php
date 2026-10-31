@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ApplicationResource\Pages;
+use App\Filament\Tables\TableFilters;
 use App\Models\Application;
 use App\Models\BmpcMember;
 use App\Models\Branch;
@@ -65,12 +66,13 @@ class ApplicationResource extends Resource
         return $form
             ->schema([
                 Forms\Components\Section::make('Transaction')
-                    ->description('Choose what you are filing. New and active members are added to Members, and upgrades and re-applications take effect, only when the Administrator approves.')
+                    ->description('Choose what you are filing. New members are added to Members, and upgrades take effect, when the Administrator approves; re-applications go to the Branch Manager of the member\'s branch.')
                     ->columns(['default' => 1, 'sm' => 2, 'lg' => 3])
                     ->schema([
                         Forms\Components\Select::make('type')
                             ->label('Type of transaction')
-                            ->options(Application::typeOptions())
+                            ->options(fn (?Application $record) => $record ? Application::typeOptions() : Application::filingTypeOptions())
+                            ->in(fn (?Application $record) => array_keys($record ? Application::typeOptions() : Application::filingTypeOptions()))
                             ->default('new')
                             ->selectablePlaceholder(false)
                             ->required()
@@ -202,7 +204,8 @@ class ApplicationResource extends Resource
                     ->columns(['default' => 1, 'sm' => 2, 'lg' => 3])
                     ->schema([
                         Forms\Components\DatePicker::make('application_date')
-                            ->label(fn (Forms\Get $get) => $get('type') === 'upgrade' ? 'Upgrade request date' : 'Application date')
+                            ->label('Transaction date')
+                            ->helperText(fn (Forms\Get $get) => $get('type') === 'upgrade' ? 'The upgrade request date: the upgrade waiting period counts from it.' : null)
                             ->default(now())->maxDate(now())->required(),
                         Forms\Components\DatePicker::make('member_since')
                             ->label('Original approval date')
@@ -236,8 +239,9 @@ class ApplicationResource extends Resource
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query) => $query->with(['member.branch', 'branch']))
+            ->searchPlaceholder('Search name or Acct. Number')
             ->columns([
-                Tables\Columns\TextColumn::make('application_date')->date()->sortable(),
+                Tables\Columns\TextColumn::make('application_date')->label('Transaction date')->date()->sortable(),
                 Tables\Columns\TextColumn::make('applicant_account_no')->label('Acct. Number')->fontFamily('mono')
                     ->state(fn (Application $record) => $record->applicantAccountNo()),
                 Tables\Columns\TextColumn::make('applicant_name')->label('Applicant')->wrap()
@@ -250,7 +254,9 @@ class ApplicationResource extends Resource
                 Tables\Columns\TextColumn::make('type')->formatStateUsing(fn (string $state) => Application::typeOptions()[$state] ?? $state)->visibleFrom('md'),
                 Tables\Columns\TextColumn::make('or_number')->label('OR No.')->placeholder('—')->fontFamily('mono')->visibleFrom('xl'),
                 Tables\Columns\TextColumn::make('category')->formatStateUsing(fn (string $state) => Member::categoryLabel($state))->badge()->visibleFrom('sm'),
-                Tables\Columns\TextColumn::make('applicant_branch')->label('Branch')->visibleFrom('lg')
+                Tables\Columns\TextColumn::make('applicant_branch_code')->label('Branch code')->fontFamily('mono')->placeholder('—')->visibleFrom('lg')
+                    ->state(fn (Application $record) => $record->applicantBranchCode()),
+                Tables\Columns\TextColumn::make('applicant_branch')->label('Branch name')->placeholder('—')->visibleFrom('md')
                     ->state(fn (Application $record) => $record->applicantBranchName()),
                 Tables\Columns\TextColumn::make('status')->badge()
                     ->formatStateUsing(fn (string $state) => Application::STATUSES[$state] ?? $state)
@@ -258,9 +264,12 @@ class ApplicationResource extends Resource
                 Tables\Columns\TextColumn::make('approved_at')->label('Decided')->date()->visibleFrom('lg'),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('status')->options(Application::STATUSES),
-                Tables\Filters\SelectFilter::make('type')->options(Application::typeOptions()),
+                Tables\Filters\SelectFilter::make('type')->label('Type of transaction')->placeholder('All types')->options(Application::typeOptions()),
+                Tables\Filters\SelectFilter::make('status')->placeholder('All statuses')->options(Application::STATUSES),
+                TableFilters::transactionDate('application_date'),
                 Tables\Filters\SelectFilter::make('branch')
+                    ->placeholder('All branches')
+                    ->visible(fn () => Branch::restrictedId() === null)
                     ->options(fn () => Branch::options())
                     ->query(fn (Builder $query, array $data) => $query->when($data['value'] ?? null, fn (Builder $query, $branch) => $query->where(fn (Builder $query) => $query
                         ->where(fn (Builder $query) => $query->whereNull('applications.member_id')->where('applications.branch_id', $branch))

@@ -24,12 +24,12 @@ class ViewImportBatch extends ViewRecord
                 ->label('Download issues (CSV)')
                 ->icon('heroicon-o-document-arrow-down')
                 ->color('gray')
-                ->hidden(fn () => $this->record->isBmpcMemberImport())
+                ->hidden(fn () => ! $this->record->isMasterlistImport())
                 ->action(fn () => app(MasterlistImportService::class)->errorReport($this->record)),
             Actions\Action::make('resume')
                 ->label('Continue import')
                 ->icon('heroicon-o-play')
-                ->visible(fn () => ! $this->record->isBmpcMemberImport() && in_array($this->record->status, ['analyzed', 'staged', 'importing'], true) && (auth()->user()?->can('members.import') ?? false))
+                ->visible(fn () => $this->record->isMasterlistImport() && in_array($this->record->status, ['analyzed', 'staged', 'importing'], true) && (auth()->user()?->can('members.import') ?? false))
                 ->url(fn () => MemberResource::getUrl('import', ['batch' => $this->record->id])),
             Actions\Action::make('deleteImportedData')
                 ->label('Delete imported data')

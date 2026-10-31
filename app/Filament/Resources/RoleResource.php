@@ -8,6 +8,7 @@ use App\Services\Access\Permissions;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Support\Enums\MaxWidth;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
@@ -80,7 +81,26 @@ class RoleResource extends Resource
                 Tables\Columns\TextColumn::make('users_count')->label('Users'),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
+                Tables\Actions\EditAction::make()
+                    ->modalHeading(fn (Role $record) => 'Edit '.(Permissions::ROLE_LABELS[$record->name] ?? $record->name))
+                    ->modalWidth(MaxWidth::FourExtraLarge)
+                    ->mutateRecordDataUsing(fn (array $data, Role $record): array => [
+                        ...$data,
+                        'permission_groups' => $record->permissions->pluck('name')
+                            ->groupBy(fn (string $name) => ucfirst(explode('.', $name)[0]))
+                            ->map->values()->all(),
+                    ])
+                    // The permission checkboxes are not columns of the role: they are synced (and audited) after the save.
+                    ->using(function (Role $record, array $data): Role {
+                        $permissions = collect($data['permission_groups'] ?? [])->flatten()->values()->all();
+                        unset($data['permission_groups']);
+
+                        $record->update($data);
+                        static::syncAndAudit($record, $permissions);
+
+                        return $record;
+                    })
+                    ->successNotificationTitle('Role saved'),
                 Tables\Actions\DeleteAction::make(),
             ]);
     }
@@ -115,7 +135,6 @@ class RoleResource extends Resource
     {
         return [
             'index' => Pages\ListRoles::route('/'),
-            'edit' => Pages\EditRole::route('/{record}/edit'),
         ];
     }
 }

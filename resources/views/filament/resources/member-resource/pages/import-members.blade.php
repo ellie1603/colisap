@@ -368,6 +368,9 @@
             </x-filament::section>
         @endif
 
-        {{ $this->table }}
+        {{-- Hidden while importing: redrawing it recounts every row of the file on each progress update. --}}
+        @unless ($status === 'importing')
+            {{ $this->table }}
+        @endunless
     @endif
 </x-filament-panels::page>

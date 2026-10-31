@@ -23,7 +23,10 @@ class BmpcMemberImportService
      *
      * @var list<string>
      */
-    private const FIELDS = ['account_name', 'last_name', 'first_name', 'middle_name', 'suffix', 'branch_id', 'birthdate', 'sex', 'contact_number', 'address', 'savings_balance'];
+    private const FIELDS = [
+        'account_name', 'last_name', 'first_name', 'middle_name', 'suffix', 'branch_id', 'birthdate', 'sex', 'contact_number', 'address',
+        'savings_balance', 'last_transaction_date', 'segment', 'category', 'remarks',
+    ];
 
     public function __construct(private WorkbookParser $parser) {}
 
@@ -64,10 +67,21 @@ class BmpcMemberImportService
             $columns = $sheet['columns'];
 
             if ($sheet['header_row'] !== null && isset($columns['account_no']) && (isset($columns['full_name']) || isset($columns['last_name'], $columns['first_name']))) {
+                // The coop list has "Classification" (MIGS / NON-MIGS) before "Segmentation Status" (Diamond, Gold,
+                // Silver): the segmentation is the column that says so.
+                foreach ($sheet['headers'] as $column => $header) {
+                    if (str_contains(strtolower($header), 'segment')) {
+                        $sheet['columns']['segment'] = $column;
+
+                        break;
+                    }
+                }
+
                 $sheets[] = [
                     ...array_intersect_key($sheet, array_flip(['index', 'name', 'header_row', 'columns', 'branch_id'])),
                     'branch_column' => $this->branchColumn($sheet['headers']),
                     'contact_columns' => $this->contactColumns($sheet['headers']),
+                    'last_transaction_column' => $this->parser->lastTransactionColumn($sheet['headers']),
                 ];
             }
         }
@@ -159,10 +173,16 @@ class BmpcMemberImportService
                 continue;
             }
 
+            $lastTransaction = isset($sheet['last_transaction_column']) ? $this->parser->parseDate($cells[$sheet['last_transaction_column']] ?? null) : null;
+
             $pending[$data['account_no']] = [
                 'account_no' => $data['account_no'],
                 ...array_intersect_key($data, array_flip(self::FIELDS)),
                 'branch_id' => $branchId ?? $homeBranchId,
+                'last_transaction_date' => $lastTransaction,
+                // A category only when the file has one; otherwise it stays empty.
+                'category' => isset($sheet['columns']['category']) ? $data['category'] : null,
+                'remarks' => $this->remarks($data),
             ];
 
             if (count($pending) >= self::CHUNK) {
@@ -172,6 +192,21 @@ class BmpcMemberImportService
         }
 
         $this->save($pending, $summary, $importBatchId);
+    }
+
+    /**
+     * The account remark from the row's status or remarks: deceased, deactivated (terminated, withdrawn or closed),
+     * or the savings system's dormant-bal / dormant-txn flag; null when the row says none of these.
+     *
+     * @param  array<string, mixed>  $data  a row normalized by WorkbookParser::normalizeRow()
+     */
+    private function remarks(array $data): ?string
+    {
+        return match ($data['terminal_status'] ?? null) {
+            'deceased' => 'deceased',
+            'terminated', 'withdrawn' => 'deactivated',
+            default => $data['savings_account_status'] ?? null,
+        };
     }
 
     /**

@@ -61,6 +61,22 @@ class CreateModalsTest extends TestCase
         );
     }
 
+    public function test_a_role_is_edited_in_a_modal_that_starts_with_its_current_permissions(): void
+    {
+        $this->actingAsRole(Permissions::ADMIN);
+        $role = Role::create(['name' => 'teller', 'guard_name' => 'web'])->givePermissionTo('members.view');
+
+        Livewire::test(ListRoles::class)
+            ->mountTableAction('edit', $role)
+            ->assertTableActionDataSet(['permission_groups' => ['Members' => ['members.view']]])
+            ->setTableActionData(['permission_groups' => ['Members' => [], 'Reports' => ['reports.view']]])
+            ->callMountedTableAction()
+            ->assertHasNoTableActionErrors()
+            ->assertNotified('Role saved');
+
+        $this->assertSame(['reports.view'], $role->fresh()->permissions->pluck('name')->all());
+    }
+
     public function test_the_dashboard_shortcut_opens_the_new_application_form(): void
     {
         $this->actingAsRole(Permissions::CRS);

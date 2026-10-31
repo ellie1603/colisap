@@ -7,6 +7,7 @@ use App\Filament\Resources\ImportBatchResource\RelationManagers;
 use App\Models\ImportBatch;
 use App\Services\Masterlist\BmpcMemberImportService;
 use App\Services\Masterlist\MasterlistImportService;
+use App\Services\Masterlist\SavingsImportService;
 use Filament\Infolists;
 use Filament\Infolists\Infolist;
 use Filament\Notifications\Notification;
@@ -48,13 +49,13 @@ class ImportBatchResource extends Resource
 
     /**
      * The import's details as table rows of one or two label / value pairs (see filament/details-table.blade.php).
-     * Masterlist-only figures are left out of BMPC member uploads.
+     * Masterlist-only figures are left out of the uploads written straight away (BMPC members, savings).
      *
      * @return list<list<array{label: string, value: ?string, badge?: string, mono?: bool}>>
      */
     public static function detailRows(ImportBatch $record): array
     {
-        $isBmpc = $record->isBmpcMemberImport();
+        $isDirectUpload = ! $record->isMasterlistImport();
         $count = fn (?int $value): string => number_format((int) $value);
         $dateTime = fn ($value): ?string => $value?->format('M j, Y g:i A');
 
@@ -66,13 +67,13 @@ class ImportBatchResource extends Resource
             ['label' => 'Uploaded by', 'value' => $record->uploader?->name],
             ['label' => 'Uploaded', 'value' => $dateTime($record->created_at)],
             ['label' => 'Completed at', 'value' => $dateTime($record->completed_at)],
-            $isBmpc ? null : ['label' => 'Balances as of', 'value' => $record->as_of_date?->format('M j, Y')],
+            $isDirectUpload ? null : ['label' => 'Balances as of', 'value' => $record->as_of_date?->format('M j, Y')],
             ['label' => 'Total rows', 'value' => $count($record->total_rows)],
-            ['label' => $isBmpc ? 'Skipped' : 'Invalid', 'value' => $count($record->invalid_rows)],
+            ['label' => $isDirectUpload ? 'Skipped' : 'Invalid', 'value' => $count($record->invalid_rows)],
             ['label' => 'New', 'value' => $count($record->new_rows)],
             ['label' => 'Updates', 'value' => $count($record->update_rows)],
-            $isBmpc ? null : ['label' => 'Duplicates', 'value' => $count($record->duplicate_rows)],
-            $isBmpc ? null : ['label' => 'With warnings', 'value' => $count($record->warning_rows)],
+            $isDirectUpload ? null : ['label' => 'Duplicates', 'value' => $count($record->duplicate_rows)],
+            $isDirectUpload ? null : ['label' => 'With warnings', 'value' => $count($record->warning_rows)],
             ['label' => 'Created', 'value' => $count($record->created_count)],
             ['label' => 'Updated', 'value' => $count($record->updated_count)],
         ]));
@@ -107,7 +108,7 @@ class ImportBatchResource extends Resource
                     ->color(fn (string $state) => ImportBatch::statusColor($state)),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('type')->label('Imported into')->options(ImportBatch::TYPES),
+                Tables\Filters\SelectFilter::make('type')->label('Imported into')->placeholder('All import types')->options(ImportBatch::TYPES),
                 Tables\Filters\SelectFilter::make('status')->options(ImportBatch::STATUSES),
             ])
             ->actions([
@@ -115,7 +116,7 @@ class ImportBatchResource extends Resource
                 Tables\Actions\Action::make('resume')
                     ->label(fn (ImportBatch $record) => $record->status === 'awaiting_approval' ? 'Open' : 'Continue')
                     ->icon('heroicon-o-play')
-                    ->visible(fn (ImportBatch $record) => ! $record->isBmpcMemberImport() && in_array($record->status, ['analyzed', 'staged', 'awaiting_approval', 'importing'], true) && (auth()->user()?->can('members.import') ?? false))
+                    ->visible(fn (ImportBatch $record) => $record->isMasterlistImport() && in_array($record->status, ['analyzed', 'staged', 'awaiting_approval', 'importing'], true) && (auth()->user()?->can('members.import') ?? false))
                     ->url(fn (ImportBatch $record) => MemberResource::getUrl('import', ['batch' => $record->id])),
                 Tables\Actions\Action::make('deleteImportedData')
                     ->label('Delete')
@@ -146,6 +147,11 @@ class ImportBatchResource extends Resource
                 .'. Members it only updated stay on the list. The file is also removed from Import History. This cannot be undone.';
         }
 
+        if ($batch->isSavingsImport()) {
+            return 'This takes back the '.number_format(app(SavingsImportService::class)->importedDataCount($batch)).' balance change(s) that "'.$batch->file_name.'" recorded'
+                .'. Last transaction dates it filled in stay. The file is also removed from Import History. This cannot be undone.';
+        }
+
         $summary = app(MasterlistImportService::class)->importedDataSummary($batch);
 
         return 'This permanently deletes '.number_format($summary['members']).' member(s) that "'.$batch->file_name.'" added, together with their savings entries, applications and history'
@@ -165,6 +171,18 @@ class ImportBatchResource extends Resource
             Notification::make()
                 ->title('Imported data deleted')
                 ->body('"'.$fileName.'": '.number_format($deleted).' BMPC member(s) removed.')
+                ->success()
+                ->send();
+
+            return;
+        }
+
+        if ($batch->isSavingsImport()) {
+            $reversed = app(SavingsImportService::class)->deleteImportedData($batch);
+
+            Notification::make()
+                ->title('Imported data deleted')
+                ->body('"'.$fileName.'": '.number_format($reversed).' balance change(s) taken back.')
                 ->success()
                 ->send();
 

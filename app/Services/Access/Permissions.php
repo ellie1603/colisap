@@ -4,9 +4,9 @@ namespace App\Services\Access;
 
 /**
  * Role-based access control map. Policies and pages check these permission names.
- * Two roles: the Administrator (bypasses every check, see AppServiceProvider Gate::before)
- * and the CRS Officer, who adds members (by filing applications), updates them, files re-applications
- * and imports or exports the Excel masterlist.
+ * Three roles: the Administrator (bypasses every check, see AppServiceProvider Gate::before); the CRS Officer,
+ * who registers and encodes members (by filing transactions), files re-applications and imports or exports the
+ * Excel masterlist; and the Branch Manager, who views their branch and approves the re-applications CRS send.
  */
 final class Permissions
 {
@@ -14,12 +14,15 @@ final class Permissions
 
     public const CRS = 'crs';
 
+    public const BRANCH_MANAGER = 'branch_manager';
+
     /**
      * @var array<string, string>
      */
     public const ROLE_LABELS = [
         self::ADMIN => 'Administrator',
         self::CRS => 'CRS Officer',
+        self::BRANCH_MANAGER => 'Branch Manager',
     ];
 
     /**
@@ -40,6 +43,7 @@ final class Permissions
         'applications.view' => 'View member transactions',
         'applications.create' => 'Add member transactions (new, active, upgrade, re-application)',
         'applications.manage' => 'Approve or reject applications, re-applications & withdrawals',
+        'applications.approve_reapplications' => 'Approve or reject re-applications of their own branch',
         'savings.view' => 'View savings',
         'savings.manage' => 'Record savings transactions',
         'monitoring.view' => 'View monitoring & alerts',
@@ -67,7 +71,10 @@ final class Permissions
             self::ADMIN => array_keys(self::ALL),
             self::CRS => [
                 'members.view', 'members.create', 'members.update', 'members.import', 'members.export',
-                'applications.view', 'applications.create', 'imports.view', 'bmpc_members.view', 'bmpc_members.import',
+                'applications.view', 'applications.create', 'imports.view', 'bmpc_members.view', 'bmpc_members.import', 'savings.manage',
+            ],
+            self::BRANCH_MANAGER => [
+                'members.view', 'bmpc_members.view', 'monitoring.view', 'applications.view', 'applications.approve_reapplications',
             ],
         ];
     }
