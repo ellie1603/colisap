@@ -20,8 +20,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->trustProxies(at: '*');
 
         // Host-header poisoning: in production only requests for APP_URL's host are served (off on this
-        // office PC, where staff use the PC's network address, and in tests).
-        $middleware->trustHosts();
+        // office PC, where staff use the PC's network address, and in tests). "localhost" is the container's
+        // own health check (http://localhost:8080/up); without it the check fails and Dokploy never routes
+        // traffic to the container ("Bad Gateway"). Outside requests only reach the container through
+        // Traefik, which forwards APP_URL's host alone.
+        $middleware->trustHosts(at: ['^localhost$', '^127\.0\.0\.1$']);
 
         $middleware->append(SecurityHeaders::class);
 
