@@ -36,7 +36,8 @@
 
     <section class="colisap-login__panel">
         <div class="colisap-login__form-wrap">
-            <img class="colisap-login__mobile-logo" src="{{ asset('images/logo-192.png') }}" alt="COLISAP logo">
+            <img class="colisap-login__mobile-logo colisap-logo--light" src="{{ asset('images/logo-192.png') }}" alt="COLISAP logo">
+            <img class="colisap-login__mobile-logo colisap-logo--dark" src="{{ asset('images/logo-dark-192.png') }}" alt="COLISAP logo">
 
             <header class="colisap-login__header">
                 <span class="colisap-login__accent" aria-hidden="true"></span>

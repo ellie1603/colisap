@@ -27,7 +27,7 @@ class ListMembersTest extends TestCase
 
         $component = Livewire::test(ListMembers::class)
             ->loadTable()
-            ->filterTable('status', 'dormant')
+            ->set('activeTab', 'dormant')
             ->filterTable('branch_id', $barbaza)
             ->callAction('export', ['layout' => 'detailed', 'format' => 'csv'])
             ->assertFileDownloaded('members-2026-06-30-080000.csv');
@@ -146,12 +146,12 @@ class ListMembersTest extends TestCase
         $this->actingAsRole(Permissions::ADMIN);
 
         $filters = array_keys(Livewire::test(ListMembers::class)->instance()->getTable()->getFilters());
-        $this->assertSame(['status', 'branch_id', 'segment', 'category', 'trashed'], $filters);
+        $this->assertSame(['branch_id', 'segment', 'category', 'trashed'], $filters, 'Status is chosen with the tabs, not a filter.');
 
         $this->actingAs(User::factory()->create(['is_active' => true, 'branch_id' => Branch::where('name', 'Barbaza')->value('id')])->assignRole(Permissions::CRS));
         Livewire::test(ListMembers::class)
             ->assertTableFilterHidden('branch_id')
-            ->assertTableFilterVisible('status');
+            ->assertTableFilterVisible('segment');
     }
 
     public function test_export_and_import_actions_follow_permissions(): void

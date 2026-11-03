@@ -21,7 +21,7 @@ class ListRoles extends ListRecords
             Actions\CreateAction::make()
                 ->modalHeading('New role')
                 ->modalSubmitActionLabel('Create role')
-                ->modalWidth(MaxWidth::FourExtraLarge)
+                ->modalWidth(MaxWidth::FiveExtraLarge)
                 ->createAnother(false)
                 ->mutateFormDataUsing(function (array $data) use (&$permissions): array {
                     $permissions = collect($data['permission_groups'] ?? [])->flatten()->values()->all();

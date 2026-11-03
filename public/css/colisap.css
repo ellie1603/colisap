@@ -416,9 +416,11 @@ body.fi-body {
  * Brand lockup (sidebar header)
  * ------------------------------------------------------------------ */
 .colisap-brand { display: inline-flex; align-items: center; gap: .75rem; height: 100%; }
-.colisap-brand__mark { display: grid; place-items: center; width: 2.6rem; height: 2.6rem; flex-shrink: 0; border-radius: .8rem; background: #fff;
-    box-shadow: 0 6px 16px -8px rgba(15, 23, 42, .12), inset 0 0 0 1px rgba(15, 23, 42, .06); }
-.colisap-brand__mark img { width: 2.15rem; height: 2.15rem; object-fit: contain; }
+.colisap-brand__mark { display: grid; place-items: center; width: 2.6rem; height: 2.6rem; flex-shrink: 0; }
+.colisap-brand__mark img { width: 2.6rem; height: 2.6rem; object-fit: contain; }
+/* The logo comes in two versions: navy "C" for light backgrounds, white "C" for dark mode */
+html:not(.dark) .colisap-logo--dark,
+.dark .colisap-logo--light { display: none; }
 .colisap-brand__text { display: flex; flex-direction: column; line-height: 1.1; }
 .colisap-brand__name { font-size: 1.05rem; font-weight: 800; letter-spacing: .14em; color: var(--cx-sidebar-text-strong, var(--cx-ink)); }
 .colisap-brand__sub { margin-top: .2rem; font-size: .64rem; font-weight: 600; letter-spacing: .16em; text-transform: uppercase; color: var(--cx-sidebar-muted, rgb(var(--gray-500))); }
@@ -728,22 +730,56 @@ body.fi-body .fi-btn.fi-btn-color-gray:not(.fi-btn-outlined) { box-shadow: inset
 /* The bar's "Filters" heading and Reset link: the reset button already sits by the search box */
 .fi-main .fi-ta-filters-above-content-ctn .fi-ta-filters > :first-child { display: none; }
 .fi-main .fi-ta-filters-above-content-ctn .fi-ta-filters { gap: 0; }
-/* The filters fill whole rows: all on one line when each gets 10rem, otherwise in even rows (2 × 2, 3 + 2…),
-   one per line on a phone, never a lone filter left on a line of its own */
+/* Filters are compact chips that fit their text, in one row after the search box, wrapping only when the row is
+   full; on a phone they share the width two by two. A chip with a choice made turns blue, so the active filters
+   stand out at a glance. */
 .fi-main .fi-ta-filters-above-content-ctn { container-type: inline-size; }
-.fi-main .fi-ta-filters-above-content-ctn .fi-ta-filters > .fi-fo-component-ctn {
-    grid-template-columns: repeat(var(--cx-filter-cols, 1), minmax(0, 1fr)); gap: .75rem; }
-@container (min-width: 20.75rem) {
-    .fi-main .fi-ta-filters > .fi-fo-component-ctn:is(:has(> :nth-child(2):last-child), :has(> :nth-child(4):last-child), :has(> :nth-child(6):last-child)) { --cx-filter-cols: 2; } }
-@container (min-width: 31.5rem) {
-    .fi-main .fi-ta-filters > .fi-fo-component-ctn:is(:has(> :nth-child(3):last-child), :has(> :nth-child(5):last-child), :has(> :nth-child(6):last-child)) { --cx-filter-cols: 3; } }
-@container (min-width: 42.25rem) {
-    .fi-main .fi-ta-filters > .fi-fo-component-ctn:has(> :nth-child(4):last-child) { --cx-filter-cols: 4; } }
-@container (min-width: 53rem) {
-    .fi-main .fi-ta-filters > .fi-fo-component-ctn:has(> :nth-child(5):last-child) { --cx-filter-cols: 5; } }
-@container (min-width: 63.75rem) {
-    .fi-main .fi-ta-filters > .fi-fo-component-ctn:has(> :nth-child(6):last-child) { --cx-filter-cols: 6; } }
-.fi-main .fi-ta-filters-above-content-ctn .fi-fo-component-ctn > * { min-width: 0; }
+.fi-main .fi-ta-filters-above-content-ctn .fi-ta-filters > .fi-fo-component-ctn { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.fi-main .fi-ta-filters-above-content-ctn .fi-ta-filters > .fi-fo-component-ctn > * { flex: 0 1 auto; min-width: 0; }
+@container (max-width: 34rem) {
+    .fi-main .fi-ta-filters-above-content-ctn .fi-ta-filters > .fi-fo-component-ctn > * { flex: 1 1 calc(50% - .25rem); }
+    .fi-main .fi-ta-filters select.fi-select-input { width: 100%; max-width: none; }
+}
+.fi-main .fi-ta-filters .fi-input-wrp,
+.fi-main .fi-ta-search-field .fi-input-wrp { border-radius: .65rem; background: #fff; box-shadow: inset 0 0 0 1px rgba(30, 64, 120, .14), 0 1px 2px rgba(15, 23, 42, .04);
+    transition: box-shadow .15s ease, background .15s ease; }
+.dark .fi-main .fi-ta-filters .fi-input-wrp,
+.dark .fi-main .fi-ta-search-field .fi-input-wrp { background: rgba(255, 255, 255, .05); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .14); }
+.fi-main .fi-ta-filters .fi-input-wrp:hover { box-shadow: inset 0 0 0 1px rgba(30, 136, 200, .45), 0 1px 2px rgba(15, 23, 42, .04); }
+.fi-main .fi-ta-filters .fi-input-wrp:focus-within { box-shadow: inset 0 0 0 2px var(--cx-accent); }
+.fi-main .fi-ta-filters select.fi-select-input { height: 2.25rem; min-width: 9rem; max-width: 15rem; padding-top: 0; padding-bottom: 0; padding-left: .8rem;
+    font-size: .85rem; font-weight: 500; line-height: 2.25rem; color: rgb(var(--gray-700)); cursor: pointer; text-overflow: ellipsis; }
+.dark .fi-main .fi-ta-filters select.fi-select-input { color: rgb(var(--gray-200)); }
+/* A choice made: blue chip */
+.fi-main .fi-ta-filters .fi-input-wrp:has(select option:checked:not([value=""])) { background: var(--cx-accent-soft); box-shadow: inset 0 0 0 1px rgba(30, 136, 200, .5); }
+.fi-main .fi-ta-filters .fi-input-wrp:has(select option:checked:not([value=""])) select.fi-select-input { color: var(--cx-accent-ink); font-weight: 600; }
+
+/* The open list: on browsers that allow it (Chrome, Edge, the desktop app) it is a styled menu that opens over the
+   page, never cut off by the card, with the current choice ticked. It is still the browser's own control, so it
+   opens at once and typing a letter jumps to it. Other browsers keep their usual list. */
+@supports (appearance: base-select) {
+    .fi-main .fi-ta-filters select.fi-select-input,
+    .fi-main .fi-ta-filters select.fi-select-input::picker(select) { appearance: base-select; }
+    .fi-main .fi-ta-filters select.fi-select-input { display: flex; align-items: center; field-sizing: content; border: 0; }
+    .fi-main .fi-ta-filters select.fi-select-input::picker-icon { display: none; }
+    .fi-main .fi-ta-filters select.fi-select-input::picker(select) {
+        margin-top: .35rem; padding: .3rem; min-width: anchor-size(width); max-height: min(20rem, 60vh); overflow-y: auto;
+        border: 0; border-radius: .8rem; background: #fff; color: rgb(var(--gray-700));
+        box-shadow: 0 0 0 1px rgba(30, 64, 120, .1), 0 20px 40px -16px rgba(15, 23, 42, .28);
+        opacity: 0; translate: 0 -.25rem; transition: opacity .12s ease, translate .12s ease, display .12s allow-discrete, overlay .12s allow-discrete; }
+    .fi-main .fi-ta-filters select.fi-select-input:open::picker(select) { opacity: 1; translate: 0 0; }
+    @starting-style { .fi-main .fi-ta-filters select.fi-select-input:open::picker(select) { opacity: 0; translate: 0 -.25rem; } }
+    .dark .fi-main .fi-ta-filters select.fi-select-input::picker(select) { background: rgb(var(--gray-900)); color: rgb(var(--gray-200)); box-shadow: 0 0 0 1px rgba(255, 255, 255, .1), 0 20px 40px -16px rgba(0, 0, 0, .7); }
+    .fi-main .fi-ta-filters select.fi-select-input option { display: flex; align-items: center; gap: .6rem; min-height: 2.25rem; padding: .4rem .65rem; border-radius: .55rem;
+        font-size: .85rem; font-weight: 500; color: inherit; background: transparent; cursor: pointer; white-space: nowrap; }
+    .fi-main .fi-ta-filters select.fi-select-input option:hover,
+    .fi-main .fi-ta-filters select.fi-select-input option:focus-visible { background: var(--cx-tint-strong); color: var(--cx-ink); outline: none; }
+    .fi-main .fi-ta-filters select.fi-select-input option:checked { background: var(--cx-accent-soft); color: var(--cx-accent-ink); font-weight: 600; }
+    .fi-main .fi-ta-filters select.fi-select-input option::checkmark { order: 1; margin-left: auto; color: var(--cx-accent); }
+    /* The "All …" choice is set apart from the real ones by a line */
+    .fi-main .fi-ta-filters select.fi-select-input option[value=""] { margin-bottom: .3rem; box-shadow: 0 calc(.15rem + 1px) 0 -.15rem var(--cx-hairline); }
+}
+@media (prefers-reduced-motion: reduce) { .fi-main .fi-ta-filters select.fi-select-input::picker(select) { transition: none; } }
 /* Field labels are for screen readers only: each dropdown says what it filters ("All categories"). A checkbox keeps its label. */
 .fi-main .fi-ta-filters-above-content-ctn .fi-fo-field-wrp-label:not(:has(input)) {
     position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -759,7 +795,8 @@ body.fi-body .fi-btn.fi-btn-color-gray:not(.fi-btn-outlined) { box-shadow: inset
     .fi-main .fi-ta-search-field { width: auto; flex: 1 1 auto; }
 }
 /* The search box: square-cornered like the dropdowns, with a small search icon on its right */
-.fi-main .fi-ta-search-field .fi-input-wrp { flex-direction: row-reverse; border-radius: .6rem; background: var(--cx-card-bg); box-shadow: inset 0 0 0 1px var(--cx-hairline); }
+.fi-main .fi-ta-search-field .fi-input-wrp { flex-direction: row-reverse; }
+.fi-main .fi-ta-search-field input { height: 2.25rem; font-size: .85rem; }
 .fi-main .fi-ta-search-field .fi-input-wrp-prefix { padding: 0 .7rem 0 .25rem; }
 .fi-main .fi-ta-search-field .fi-input-wrp-prefix .fi-input-wrp-icon { width: 1rem; height: 1rem; color: rgb(var(--gray-400)); }
 .fi-main .fi-ta-search-field .fi-input-wrp-input input { padding-left: .85rem; }
@@ -807,6 +844,36 @@ body.fi-body .fi-no-notification.fi-status-warning { box-shadow: inset 4px 0 0 #
 body.fi-body .fi-no-notification.fi-status-danger { box-shadow: inset 4px 0 0 #E11D48, 0 18px 40px -18px rgba(15, 23, 42, .12); }
 body.fi-body .fi-no-notification.fi-status-info { box-shadow: inset 4px 0 0 #1E88C8, 0 18px 40px -18px rgba(15, 23, 42, .12); }
 body.fi-body .fi-no-notification-title { font-weight: 700; }
+
+/* Role form: the name, then one row per permission section (icon, name and description on the left, its
+   permissions as tick tiles on the right), separated by hairlines. A ticked tile turns blue. */
+.colisap-role-name { max-width: 28rem; }
+.colisap-perm-heading { font-size: .85rem; color: rgb(var(--gray-500)); }
+.fi-fo-field-wrp:has(> .grid > .colisap-perm-heading) .fi-fo-field-wrp-label span,
+.fi-fo-field-wrp:has(.colisap-perm-heading) .fi-fo-field-wrp-label span { font-size: 1rem; font-weight: 700; color: var(--cx-ink); }
+.fi-fo-component-ctn > :has(> .colisap-perm-group) { padding-top: 1.25rem; border-top: 1px solid var(--cx-hairline); }
+.colisap-perm-group.fi-aside { gap: .9rem 2rem; }
+.colisap-perm-group .fi-section-header { flex-direction: row; align-items: flex-start; gap: .8rem; }
+.colisap-perm-group .fi-section-header > div { gap: .8rem; }
+.colisap-perm-group .fi-section-header-icon { flex: none; width: 2.25rem; height: 2.25rem; padding: .5rem; border-radius: .7rem; color: var(--cx-accent); background: var(--cx-accent-soft); }
+.colisap-perm-group .fi-section-header-heading { font-size: .92rem; font-weight: 700; color: var(--cx-ink); }
+.colisap-perm-group .fi-section-header-description { margin-top: .1rem; font-size: .8rem; line-height: 1.45; color: rgb(var(--gray-500)); }
+.colisap-perm-group .fi-section-content-ctn { background: transparent; box-shadow: none; }
+.colisap-perm-group .fi-section-content { padding: 0; }
+.colisap-perm-list { gap: .5rem; }
+.colisap-perm-list label.fi-fo-checkbox-list-option-label { height: 100%; align-items: flex-start; gap: .65rem; padding: .6rem .75rem; border-radius: .7rem; cursor: pointer;
+    background: #fff; box-shadow: inset 0 0 0 1px rgba(30, 64, 120, .12); transition: background .12s ease, box-shadow .12s ease; }
+.colisap-perm-list label.fi-fo-checkbox-list-option-label:hover { box-shadow: inset 0 0 0 1px rgba(30, 136, 200, .45); }
+.colisap-perm-list label.fi-fo-checkbox-list-option-label:has(input:checked) { background: var(--cx-accent-soft); box-shadow: inset 0 0 0 1px rgba(30, 136, 200, .5); }
+.colisap-perm-list label.fi-fo-checkbox-list-option-label:has(input:focus-visible) { box-shadow: inset 0 0 0 2px var(--cx-accent); }
+.colisap-perm-list label.fi-fo-checkbox-list-option-label input { margin-top: .15rem; }
+.colisap-perm-list span.fi-fo-checkbox-list-option-label { font-size: .85rem; font-weight: 500; line-height: 1.35rem; color: rgb(var(--gray-700)); }
+.colisap-perm-list label:has(input:checked) span.fi-fo-checkbox-list-option-label { color: var(--cx-accent-ink); font-weight: 600; }
+.dark .colisap-perm-list label.fi-fo-checkbox-list-option-label { background: rgba(255, 255, 255, .04); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .1); }
+.dark .colisap-perm-list label.fi-fo-checkbox-list-option-label:has(input:checked) { background: var(--cx-accent-soft); box-shadow: inset 0 0 0 1px rgba(124, 196, 240, .45); }
+.dark .colisap-perm-list span.fi-fo-checkbox-list-option-label { color: rgb(var(--gray-200)); }
+/* "Select all" / "Deselect all": a small link above the tiles */
+.colisap-perm-group .fi-fo-field-wrp .mb-2 { margin-bottom: .5rem; font-size: .8rem; }
 
 /* ==================================================================
  * Custom page pieces (import wizard, reports, policy settings)

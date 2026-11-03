@@ -48,7 +48,7 @@ class AdminPanelProvider extends PanelProvider
             ->brandLogoHeight('2.75rem')
             // Site-relative: these are built before the request is known to be HTTPS (Dokploy's proxy),
             // and a full http:// address would be blocked by the browser on the https:// site.
-            ->favicon('/images/favicon.png')
+            ->favicon('/images/favicon.png?v=2')
             ->font('Public Sans', url: '/fonts/public-sans/public-sans.css', provider: LocalFontProvider::class)
             ->login(Login::class)
             ->profile(EditProfile::class, isSimple: false)
@@ -73,7 +73,7 @@ class AdminPanelProvider extends PanelProvider
                     950 => '11, 15, 40',
                 ],
             ])
-            ->renderHook(PanelsRenderHook::STYLES_AFTER, fn () => new HtmlString('<link rel="stylesheet" href="'.e(asset('css/colisap.css')).'?v=34">'))
+            ->renderHook(PanelsRenderHook::STYLES_AFTER, fn () => new HtmlString('<link rel="stylesheet" href="'.e(asset('css/colisap.css')).'?v=37">'))
             ->renderHook(PanelsRenderHook::GLOBAL_SEARCH_BEFORE, fn (): View => view('filament.topbar-date'))
             ->renderHook(PanelsRenderHook::GLOBAL_SEARCH_AFTER, fn (): View => view('filament.theme-toggle'))
             ->renderHook(PanelsRenderHook::SIDEBAR_FOOTER, fn (): View => view('filament.sidebar-footer'))

@@ -27,14 +27,15 @@ using Microsoft.Web.WebView2.WinForms;
 internal static class Program
 {
     /// <summary>Raise this for every new build: installed apps update themselves when the server has a higher number.</summary>
-    internal const string Version = "1.2.0.0";
+    internal const string Version = "1.3.0.0";
 
     internal const string AppTitle = "COLISAP — Barbaza MPC";
 
     /// <summary>The cooperative's COLISAP server (hosted on Dokploy). Staff never type it; Shift at launch changes it.</summary>
     internal const string DefaultServer = "https://colisap.barbazampc.cloud";
 
-    internal static readonly Color Indigo = Color.FromArgb(46, 58, 140);
+    /// <summary>The web system's main button blue (#1B7AB4), so the app's own windows match it.</summary>
+    internal static readonly Color Brand = Color.FromArgb(27, 122, 180);
 
     [DllImport("user32.dll")]
     private static extern bool SetProcessDPIAware();
@@ -122,7 +123,7 @@ internal static class Program
         Panel band = new Panel();
         band.Dock = DockStyle.Top;
         band.Height = 6;
-        band.BackColor = Indigo;
+        band.BackColor = Brand;
         form.Controls.Add(band);
 
         return form;
@@ -139,7 +140,7 @@ internal static class Program
         button.Text = text;
         button.SetBounds(left, top, 140, 34);
         button.FlatStyle = FlatStyle.Flat;
-        button.BackColor = primary ? Indigo : Color.FromArgb(241, 243, 249);
+        button.BackColor = primary ? Brand : Color.FromArgb(241, 243, 249);
         button.ForeColor = primary ? Color.White : Color.FromArgb(20, 26, 58);
         button.FlatAppearance.BorderSize = primary ? 0 : 1;
         button.FlatAppearance.BorderColor = Color.FromArgb(203, 209, 226);

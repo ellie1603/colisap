@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex">
     <title>@yield('title') · COLISAP — Barbaza MPC</title>
-    <link rel="icon" href="{{ asset('images/favicon.png') }}">
+    <link rel="icon" href="{{ asset('images/favicon.png') }}?v=2">
     <style>
         :root { --bg: #f1f3f9; --card: #ffffff; --text: #141a3a; --muted: #4a5476; --ring: #cbd1e2; --indigo: #2E3A8C; --code: #B8520F; }
         @media (prefers-color-scheme: dark) { :root { --bg: #0b0f28; --card: #141a3a; --text: #ffffff; --muted: #949dba; --ring: rgba(255, 255, 255, .12); --indigo: #3F4FB8; --code: #E8691C; } }
@@ -18,7 +18,8 @@
         .card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 5px;
             background: #2E3A8C; }
         .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-        .brand img { width: 40px; height: 40px; border-radius: 10px; background: #fff; padding: 4px; box-shadow: 0 0 0 1px var(--ring); }
+        .brand picture { display: flex; }
+        .brand img { width: 40px; height: 40px; object-fit: contain; }
         .code { font-size: 13px; font-weight: 700; letter-spacing: .12em; color: var(--code); }
         h1 { margin: 6px 0 10px; font-size: 26px; line-height: 1.2; letter-spacing: -.02em; }
         p { margin: 0; font-size: 15px; line-height: 1.6; color: var(--muted); }
@@ -33,7 +34,10 @@
 <body>
     <main class="card">
         <div class="brand">
-            <img src="{{ asset('images/logo-192.png') }}" alt="">
+            <picture>
+                <source srcset="{{ asset('images/logo-dark-192.png') }}" media="(prefers-color-scheme: dark)">
+                <img src="{{ asset('images/logo-192.png') }}" alt="">
+            </picture>
             <span>COLISAP · Barbaza MPC</span>
         </div>
 

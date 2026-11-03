@@ -45,27 +45,86 @@ class RoleResource extends Resource
         return static::canAccess() && ! array_key_exists($record->name, Permissions::ROLE_LABELS) && $record->users()->doesntExist();
     }
 
+    /**
+     * The permission picker's sections, in the sidebar's order, each with the sidebar's icon. A permission belongs to
+     * the section that lists its prefix ("members.view" → Members).
+     *
+     * @var array<string, array{label: string, description: string, icon: string, prefixes: list<string>}>
+     */
+    public const PERMISSION_GROUPS = [
+        'Members' => ['label' => 'Members', 'description' => 'COLISAP participant records, status, imports and exports.', 'icon' => 'heroicon-o-users', 'prefixes' => ['members']],
+        'Bmpc' => ['label' => 'BMPC Members', 'description' => 'The whole cooperative member list.', 'icon' => 'heroicon-o-user-group', 'prefixes' => ['bmpc_members']],
+        'Transactions' => ['label' => 'Member Transactions', 'description' => 'Filings and their approval.', 'icon' => 'heroicon-o-clipboard-document-check', 'prefixes' => ['applications']],
+        'Savings' => ['label' => 'Savings', 'description' => 'Savings balances and transactions.', 'icon' => 'heroicon-o-banknotes', 'prefixes' => ['savings']],
+        'Monitoring' => ['label' => 'Monitoring', 'description' => 'Alerts, notices, upgrades and SMS reminders.', 'icon' => 'heroicon-o-eye', 'prefixes' => ['monitoring']],
+        'Reports' => ['label' => 'Reports & Imports', 'description' => 'Reports, import history and branch import approvals.', 'icon' => 'heroicon-o-document-chart-bar', 'prefixes' => ['reports', 'imports']],
+        'Administration' => ['label' => 'Administration', 'description' => 'Branches, staff, roles, policy, audit logs and the monitoring API.', 'icon' => 'heroicon-o-cog-6-tooth', 'prefixes' => ['branches', 'users', 'roles', 'policy', 'audit', 'monitoring_api']],
+    ];
+
+    public static function permissionGroup(string $permission): string
+    {
+        $prefix = explode('.', $permission)[0];
+
+        foreach (self::PERMISSION_GROUPS as $key => $group) {
+            if (in_array($prefix, $group['prefixes'], true)) {
+                return $key;
+            }
+        }
+
+        return 'Administration';
+    }
+
+    /**
+     * A role's permissions split into the picker's sections, as the form holds them.
+     *
+     * @return array<string, list<string>>
+     */
+    public static function permissionGroupsOf(Role $role): array
+    {
+        return $role->permissions->pluck('name')
+            ->groupBy(fn (string $name) => static::permissionGroup($name))
+            ->map->values()->all();
+    }
+
     public static function form(Form $form): Form
     {
-        $groups = collect(Permissions::ALL)->groupBy(fn ($label, $name) => ucfirst(explode('.', $name)[0]), preserveKeys: true);
+        $permissions = collect(Permissions::ALL)->groupBy(fn (string $label, string $name) => static::permissionGroup($name), preserveKeys: true);
 
         return $form
+            ->columns(1)
             ->schema([
                 Forms\Components\TextInput::make('name')
+                    ->label('Role name')
+                    ->placeholder('e.g. teller')
+                    ->prefixIcon('heroicon-o-key')
                     ->required()
                     ->maxLength(50)
                     ->regex('/^[a-z_]+$/')
                     ->helperText('Lowercase letters and underscores.')
                     ->unique(ignoreRecord: true)
-                    ->disabled(fn (?Role $record) => $record && array_key_exists($record->name, Permissions::ROLE_LABELS)),
+                    ->disabled(fn (?Role $record) => $record && array_key_exists($record->name, Permissions::ROLE_LABELS))
+                    ->extraFieldWrapperAttributes(['class' => 'colisap-role-name']),
                 Forms\Components\Hidden::make('guard_name')->default('web'),
-                Forms\Components\Section::make('Permissions')
-                    ->description('Changes are recorded in the audit log.')
-                    ->columns(['default' => 1, 'md' => 2, 'xl' => 3])
-                    ->schema($groups->map(fn ($permissions, $group) => Forms\Components\CheckboxList::make("permission_groups.{$group}")
-                        ->label($group)
-                        ->options($permissions->all())
-                        ->bulkToggleable())->values()->all()),
+                Forms\Components\Placeholder::make('permissions_heading')
+                    ->label('Permissions')
+                    ->content('Tick what this role may do. Changes are recorded in the audit log.')
+                    ->extraAttributes(['class' => 'colisap-perm-heading']),
+                // One row per section: its name and description on the left, its permissions as tick tiles on the right.
+                ...collect(self::PERMISSION_GROUPS)->map(fn (array $group, string $key) => Forms\Components\Section::make($group['label'])
+                    ->description($group['description'])
+                    ->icon($group['icon'])
+                    ->aside()
+                    ->extraAttributes(['class' => 'colisap-perm-group'])
+                    ->schema([
+                        Forms\Components\CheckboxList::make("permission_groups.{$key}")
+                            ->label($group['label'])
+                            ->hiddenLabel()
+                            ->options($permissions->get($key, collect())->all())
+                            ->columns(['default' => 1, 'sm' => 2])
+                            ->gridDirection('row')
+                            ->bulkToggleable($permissions->get($key, collect())->count() > 1)
+                            ->extraAttributes(['class' => 'colisap-perm-list']),
+                    ]))->values()->all(),
             ]);
     }
 
@@ -83,12 +142,10 @@ class RoleResource extends Resource
             ->actions([
                 Tables\Actions\EditAction::make()
                     ->modalHeading(fn (Role $record) => 'Edit '.(Permissions::ROLE_LABELS[$record->name] ?? $record->name))
-                    ->modalWidth(MaxWidth::FourExtraLarge)
+                    ->modalWidth(MaxWidth::FiveExtraLarge)
                     ->mutateRecordDataUsing(fn (array $data, Role $record): array => [
                         ...$data,
-                        'permission_groups' => $record->permissions->pluck('name')
-                            ->groupBy(fn (string $name) => ucfirst(explode('.', $name)[0]))
-                            ->map->values()->all(),
+                        'permission_groups' => static::permissionGroupsOf($record),
                     ])
                     // The permission checkboxes are not columns of the role: they are synced (and audited) after the save.
                     ->using(function (Role $record, array $data): Role {

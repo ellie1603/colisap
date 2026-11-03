@@ -332,9 +332,7 @@ class MemberResource extends Resource
                     ->visibleFrom('lg'),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('status')
-                    ->placeholder('All statuses')
-                    ->options(Member::STATUSES),
+                // No status filter: the status tabs above the table already do that in one click.
                 Tables\Filters\SelectFilter::make('branch_id')
                     ->label('Branch')
                     ->options(fn () => Branch::options())

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Filament;
 
 use App\Filament\Resources\ApplicationResource\Pages\ListApplications;
+use App\Filament\Resources\RoleResource;
 use App\Filament\Resources\RoleResource\Pages\ListRoles;
 use App\Filament\Resources\UserResource\Pages\ListUsers;
 use App\Models\AuditLog;
@@ -59,6 +60,15 @@ class CreateModalsTest extends TestCase
             ['members.view', 'reports.view'],
             Role::findByName('teller', 'web')->permissions()->orderBy('name')->pluck('name')->all(),
         );
+    }
+
+    public function test_every_permission_is_listed_under_a_named_section_of_the_role_form(): void
+    {
+        $prefixes = collect(RoleResource::PERMISSION_GROUPS)->pluck('prefixes')->flatten();
+
+        foreach (array_keys(Permissions::ALL) as $permission) {
+            $this->assertContains(explode('.', $permission)[0], $prefixes, "{$permission} has no section in the role form.");
+        }
     }
 
     public function test_a_role_is_edited_in_a_modal_that_starts_with_its_current_permissions(): void
