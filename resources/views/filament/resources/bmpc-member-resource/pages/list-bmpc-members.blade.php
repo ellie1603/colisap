@@ -5,7 +5,7 @@
     ])
 >
     <div class="flex flex-col gap-y-6">
-        @if ($importFile)
+        @if ($importBatchId)
             @php
                 $done = $importSheetCount - count($importSheets);
                 $percent = $importSheetCount ? (int) floor($done / $importSheetCount * 100) : 0;
@@ -22,7 +22,23 @@
             </x-filament::section>
         @endif
 
-        {{ $this->table }}
+        {{-- A click anywhere on a row opens its View window; only the row's own buttons keep their click. --}}
+        <div
+            class="colisap-clickable-rows"
+            x-data="{
+                openRow(event) {
+                    const row = event.target.closest('.fi-ta-row');
+                    const control = event.target.closest('a, button, input');
+
+                    if (row && ! (control && row.contains(control))) {
+                        row.querySelector('[data-row-view]')?.click();
+                    }
+                },
+            }"
+            x-on:click="openRow($event)"
+        >
+            {{ $this->table }}
+        </div>
     </div>
 
     {{-- View window: filled from the row's data in the browser (BmpcMemberResource::viewDetails()), so it opens instantly. --}}
@@ -44,13 +60,13 @@
                                 <td
                                     x-text="pair[0][1]"
                                     x-bind:colspan="pair.length === 1 ? 3 : null"
-                                    x-bind:class="{ 'is-mono': pair[0][0] === 'Acct. Number', 'is-empty': pair[0][1] === '—' }"
+                                    x-bind:class="{ 'is-mono': pair[0][0] === 'Savings number', 'is-empty': pair[0][1] === '—' }"
                                 ></td>
                                 <template x-if="pair.length > 1">
                                     <th scope="row" x-text="pair[1][0]"></th>
                                 </template>
                                 <template x-if="pair.length > 1">
-                                    <td x-text="pair[1][1]" x-bind:class="{ 'is-empty': pair[1][1] === '—' }"></td>
+                                    <td x-text="pair[1][1]" x-bind:class="{ 'is-mono': pair[1][0] === 'CIF Key', 'is-empty': pair[1][1] === '—' }"></td>
                                 </template>
                             </tr>
                         </template>

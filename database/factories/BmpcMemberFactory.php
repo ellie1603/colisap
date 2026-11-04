@@ -22,7 +22,8 @@ class BmpcMemberFactory extends Factory
         $firstName = fake()->firstName();
 
         return [
-            'account_no' => '00101'.fake()->unique()->numerify('######'),
+            'cif_key' => fake()->unique()->numerify('##########'),
+            'savings_no' => '00101'.fake()->unique()->numerify('######'),
             'account_name' => mb_strtoupper("{$lastName}, {$firstName}"),
             'last_name' => $lastName,
             'first_name' => $firstName,

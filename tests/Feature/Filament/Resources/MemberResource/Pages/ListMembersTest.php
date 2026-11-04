@@ -3,6 +3,7 @@
 namespace Tests\Feature\Filament\Resources\MemberResource\Pages;
 
 use App\Filament\Resources\MemberResource\Pages\ListMembers;
+use App\Models\BmpcMember;
 use App\Models\Branch;
 use App\Models\Member;
 use App\Models\User;
@@ -152,6 +153,28 @@ class ListMembersTest extends TestCase
         Livewire::test(ListMembers::class)
             ->assertTableFilterHidden('branch_id')
             ->assertTableFilterVisible('segment');
+    }
+
+    public function test_the_last_transaction_comes_from_the_bmpc_list_when_none_is_recorded_and_shows_active_or_dormant(): void
+    {
+        $this->travelTo('2026-06-30 08:00:00');
+        $recorded = Member::factory()->create(['account_no' => '00101000001', 'last_activity_date' => '2026-06-01']);
+        $fromBmpcList = Member::factory()->create(['account_no' => '00101000002', 'last_activity_date' => null]);
+        $unknown = Member::factory()->create(['account_no' => '00101000003', 'last_activity_date' => null]);
+        BmpcMember::factory()->create(['savings_no' => '00101000001', 'last_transaction_date' => '2025-01-01']);
+        BmpcMember::factory()->create(['savings_no' => '00101000002', 'last_transaction_date' => '2026-01-15']);
+        $this->actingAsRole(Permissions::ADMIN);
+
+        $this->assertSame('2026-06-01', $recorded->lastTransactionDate()->toDateString(), 'A date recorded here wins over the BMPC list.');
+        $this->assertSame('2026-01-15', $fromBmpcList->lastTransactionDate()->toDateString());
+        $this->assertSame([false, true, null], [$recorded->hasDormantTransactions(), $fromBmpcList->hasDormantTransactions(), $unknown->hasDormantTransactions()]);
+        $this->assertSame('active', $fromBmpcList->fresh()->status, 'Only shown: the status is not changed.');
+
+        Livewire::test(ListMembers::class)
+            ->loadTable()
+            ->assertTableColumnFormattedStateSet('last_transaction_date', 'Jan 15, 2026', $fromBmpcList)
+            ->sortTable('last_transaction_date', 'desc')
+            ->assertCanSeeTableRecords([$recorded, $fromBmpcList, $unknown], inOrder: true);
     }
 
     public function test_export_and_import_actions_follow_permissions(): void

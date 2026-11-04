@@ -127,7 +127,7 @@ class ImportHistoryTest extends TestCase
     {
         $this->actingAsRole(Permissions::ADMIN);
         $import = app(BmpcMemberImportService::class);
-        $earlier = BmpcMember::factory()->create(['account_no' => '00101959720', 'contact_number' => null]);
+        $earlier = BmpcMember::factory()->create(['cif_key' => '0000959720', 'contact_number' => null]);
         $batch = $import->startBatch('BMPC MEMBERS.xlsx', [['name' => 'Members']]);
         $added = BmpcMember::factory()->count(2)->create(['import_batch_id' => $batch->id]);
         $import->finishBatch($batch, ['added' => 2, 'updated' => 1, 'skipped' => 0, 'other_branch' => 0, 'sheets' => 1]);

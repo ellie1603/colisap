@@ -19,7 +19,8 @@ class BmpcMember extends Model
     use Auditable, HasFactory;
 
     protected $fillable = [
-        'account_no',
+        'cif_key',
+        'savings_no',
         'account_name',
         'last_name',
         'first_name',
@@ -34,6 +35,7 @@ class BmpcMember extends Model
         'last_transaction_date',
         'segment',
         'category',
+        'status',
         'remarks',
         'import_batch_id',
         'imported_by',
@@ -46,16 +48,21 @@ class BmpcMember extends Model
     ];
 
     /**
-     * What the Remarks column may say about the account.
+     * The different values a column kept as the coop's file writes it (status, remarks) has, for its filter.
      *
-     * @var array<string, string>
+     * @return array<string, string>
      */
-    public const REMARKS = [
-        'deactivated' => 'Deactivated',
-        'deceased' => 'Deceased',
-        'dormant-bal' => 'Dormant-bal',
-        'dormant-txn' => 'Dormant-txn',
-    ];
+    public static function distinctValues(string $column): array
+    {
+        return static::query()
+            ->whereNotNull($column)
+            ->where($column, '!=', '')
+            ->distinct()
+            ->orderBy($column)
+            ->limit(100)
+            ->pluck($column, $column)
+            ->all();
+    }
 
     /**
      * Age in whole years today, worked out from the birthdate.
@@ -95,7 +102,8 @@ class BmpcMember extends Model
     {
         foreach (preg_split('/[\s,]+/', trim($search), -1, PREG_SPLIT_NO_EMPTY) as $word) {
             $query->where(fn (Builder $query) => $query
-                ->where('account_no', 'like', "%{$word}%")
+                ->where('cif_key', 'like', "%{$word}%")
+                ->orWhere('savings_no', 'like', "%{$word}%")
                 ->orWhere('account_name', 'like', "%{$word}%")
                 ->orWhere('first_name', 'like', "%{$word}%")
                 ->orWhere('middle_name', 'like', "%{$word}%")
@@ -104,24 +112,24 @@ class BmpcMember extends Model
     }
 
     /**
-     * "DELA CRUZ, JUAN P. · 00101234567 · Barbaza" — how the member is shown in the transaction lookup.
+     * "DELA CRUZ, JUAN P. · CIF 0000006392 · Barbaza" — how the member is shown in the transaction lookup.
      */
     public function lookupLabel(): string
     {
-        return collect([$this->account_name ?? "{$this->last_name}, {$this->first_name}", $this->account_no, $this->branch?->name])
+        return collect([$this->account_name ?? "{$this->last_name}, {$this->first_name}", $this->cif_key ? "CIF {$this->cif_key}" : null, $this->branch?->name])
             ->filter()
             ->join(' · ');
     }
 
     /**
-     * The transaction form fields this member fills in.
+     * The transaction form fields this member fills in. The COLISAP Acct. Number is the member's savings number.
      *
-     * @return array{account_no: string, last_name: string, first_name: string, middle_name: ?string, branch_id: ?int, birthdate: ?string, contact_number: ?string, savings_balance: ?string}
+     * @return array{account_no: ?string, last_name: ?string, first_name: ?string, middle_name: ?string, branch_id: ?int, birthdate: ?string, contact_number: ?string, savings_balance: ?string}
      */
     public function transactionDetails(): array
     {
         return [
-            'account_no' => $this->account_no,
+            'account_no' => $this->savings_no,
             'last_name' => $this->last_name,
             'first_name' => $this->first_name,
             'middle_name' => $this->middle_name,

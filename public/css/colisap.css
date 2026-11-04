@@ -323,6 +323,11 @@
 .colisap-kpi__legend-label { color: rgb(var(--gray-500)); }
 .dark .colisap-kpi__legend-label { color: rgb(var(--gray-400)); }
 .colisap-kpi__legend-value { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.colisap-kpi__legend.colisap-kpi__legend--rows { grid-template-columns: 1fr; gap: .4rem; margin-top: .75rem; }
+/* BMPC Members cards: a shorter Total card so the three small cards beside it carry no empty gap. */
+.colisap-kpis--compact .colisap-kpi--total .colisap-kpi__value { margin-top: .35rem; font-size: 2.6rem; }
+.colisap-kpis--compact .colisap-kpi--total .colisap-kpi__stack { margin-top: 1rem; }
+.colisap-kpi__legend--rows .colisap-kpi__legend-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ------------------------------------------------------------------
  * Dashboard: action center
@@ -740,6 +745,12 @@ body.fi-body .fi-btn.fi-btn-color-gray:not(.fi-btn-outlined) { box-shadow: inset
     .fi-main .fi-ta-filters-above-content-ctn .fi-ta-filters > .fi-fo-component-ctn > * { flex: 1 1 calc(50% - .25rem); }
     .fi-main .fi-ta-filters select.fi-select-input { width: 100%; max-width: none; }
 }
+/* The filters share the row evenly, so the bar ends in line with the table; one moves to a new row only when
+   each would be narrower than 10rem. */
+@container (min-width: 34rem) {
+    .fi-main .fi-ta-filters-above-content-ctn .fi-ta-filters > .fi-fo-component-ctn > * { flex: 1 1 10rem; }
+    .fi-main .fi-ta-filters-above-content-ctn .fi-ta-filters select.fi-select-input { width: 100%; max-width: none; min-width: 0; }
+}
 .fi-main .fi-ta-filters .fi-input-wrp,
 .fi-main .fi-ta-search-field .fi-input-wrp { border-radius: .65rem; background: #fff; box-shadow: inset 0 0 0 1px rgba(30, 64, 120, .14), 0 1px 2px rgba(15, 23, 42, .04);
     transition: box-shadow .15s ease, background .15s ease; }
@@ -808,6 +819,7 @@ body.fi-body .fi-btn.fi-btn-color-gray:not(.fi-btn-outlined) { box-shadow: inset
 .fi-main .fi-ta-table tbody > * { border-color: var(--cx-hairline); }
 .fi-main .fi-ta-row { transition: background .12s ease; }
 .fi-main .fi-ta-row:hover { background: var(--cx-tint); }
+.colisap-clickable-rows .fi-ta-row { cursor: pointer; }
 .fi-main .fi-ta-text-item-label { font-size: .875rem; }
 .fi-main .fi-ta-filter-indicators { background: var(--cx-tint); }
 .fi-main .fi-ta-empty-state-icon-ctn { background: rgba(30, 136, 200, .08); }

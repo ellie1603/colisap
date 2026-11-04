@@ -35,6 +35,28 @@ class NameParserTest extends TestCase
         $this->assertSame($expected, (new NameParser)->parse($fullName));
     }
 
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function accountNames(): array
+    {
+        return [
+            'blank surname, written first name first' => [', JEAN A NARCISO KIS', 'NARCISO KIS, JEAN A.'],
+            'blank surname, surname particle' => [', OLIPA SAN JUAN', 'SAN JUAN, OLIPA'],
+            'blank surname before a surname-first name' => [', ALOJADO, ANGELINA-GO', 'ALOJADO, ANGELINA-GO'],
+            'blank surname, one word' => [', CHER', 'CHER'],
+            'already surname first' => ['Dela Cruz,  Juan A.', 'DELA CRUZ, JUAN A.'],
+            'stray trailing comma' => ['SANTOS, MARIA,', 'SANTOS, MARIA'],
+            'business name stays as written' => ['BOTIKA NG BARANGAY- SAN JUAN', 'BOTIKA NG BARANGAY- SAN JUAN'],
+        ];
+    }
+
+    #[DataProvider('accountNames')]
+    public function test_account_names_are_put_surname_first(string $accountName, string $expected): void
+    {
+        $this->assertSame($expected, (new NameParser)->surnameFirst($accountName));
+    }
+
     public function test_single_word_name_has_no_first_name(): void
     {
         $this->assertSame('', (new NameParser)->parse('CHER')['first_name']);

@@ -247,7 +247,10 @@ class MemberResource extends Resource
                                 Infolists\Components\TextEntry::make('shortfall')->state(fn (Member $record) => $record->balanceShortfall())->money('PHP')
                                     ->color(fn (Member $record) => $record->balanceShortfall() > 0 ? 'danger' : null),
                                 Infolists\Components\TextEntry::make('savings_account_status')->label('Savings account flag')->placeholder('Active'),
-                                Infolists\Components\TextEntry::make('last_activity_date')->label('Last recorded activity')->date()->placeholder('Not recorded'),
+                                Infolists\Components\TextEntry::make('last_transaction_date')->label('Last transaction date')
+                                    ->state(fn (Member $record) => $record->lastTransactionDate())->date()->placeholder('Not recorded')
+                                    ->badge(fn (Member $record) => $record->hasDormantTransactions() !== null)
+                                    ->color(fn (Member $record) => $record->hasDormantTransactions() ? 'warning' : 'success'),
                                 Infolists\Components\TextEntry::make('dormant_since')->date()->placeholder('—'),
                             ]),
                         Infolists\Components\Tabs\Tab::make('Source')
@@ -268,7 +271,7 @@ class MemberResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn (Builder $query) => $query->with('branch'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['branch', 'bmpcMember:id,savings_no,last_transaction_date']))
             ->searchPlaceholder('Search name or Acct. Number')
             ->columns([
                 Tables\Columns\TextColumn::make('account_no')
@@ -323,7 +326,24 @@ class MemberResource extends Resource
                     ->visibleFrom('md'),
                 // The other details (name parts, birthdate and age, sex, contact number) are on the member's page:
                 // every extra column makes this list slower to draw.
-                Tables\Columns\TextColumn::make('last_activity_date')->label('Last transaction date')->date()->placeholder('—')->sortable()->visibleFrom('xl'),
+                // Falls back to the BMPC member list's date; Active / Dormant follows the dormancy period in Policy Settings.
+                Tables\Columns\TextColumn::make('last_transaction_date')
+                    ->label('Last transaction date')
+                    ->state(fn (Member $record) => $record->lastTransactionDate())
+                    ->date()
+                    ->placeholder('—')
+                    ->description(fn (Member $record) => match ($record->hasDormantTransactions()) {
+                        true => 'Dormant',
+                        false => 'Active',
+                        null => null,
+                    })
+                    ->color(fn (Member $record) => match ($record->hasDormantTransactions()) {
+                        true => 'warning',
+                        false => 'success',
+                        null => null,
+                    })
+                    ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy(Member::lastTransactionDateExpression(), $direction === 'desc' ? 'desc' : 'asc'))
+                    ->visibleFrom('xl'),
                 Tables\Columns\TextColumn::make('remarks')
                     ->state(fn (Member $record) => $record->accountRemarks())
                     ->placeholder('—')

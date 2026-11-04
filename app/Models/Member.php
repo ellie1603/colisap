@@ -12,8 +12,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Database\Query\Expression;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class Member extends Model
 {
@@ -290,6 +292,14 @@ class Member extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    /**
+     * The same person on the coop's BMPC member list: the BMPC member whose savings number is this Acct. Number.
+     */
+    public function bmpcMember(): HasOne
+    {
+        return $this->hasOne(BmpcMember::class, 'savings_no', 'account_no');
+    }
+
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -447,6 +457,37 @@ class Member extends Model
             $this->savings_account_status === 'dormant-txn' => 'Dormant-txn',
             default => null,
         };
+    }
+
+    /**
+     * The member's last transaction: the one recorded here (savings import), otherwise the date on the BMPC member
+     * list for the same savings number. Shown only; the status engine still reads last_activity_date alone.
+     */
+    public function lastTransactionDate(): ?Carbon
+    {
+        return $this->last_activity_date ?? $this->bmpcMember?->last_transaction_date;
+    }
+
+    /**
+     * The same date as lastTransactionDate() as an SQL expression, for sorting and filtering the member list.
+     */
+    public static function lastTransactionDateExpression(): Expression
+    {
+        return DB::raw('coalesce(members.last_activity_date, (select max(bmpc_members.last_transaction_date) from bmpc_members where bmpc_members.savings_no = members.account_no))');
+    }
+
+    /**
+     * Whether the last transaction is older than the dormancy period; null when no transaction date is known.
+     */
+    public function hasDormantTransactions(): ?bool
+    {
+        $lastTransaction = $this->lastTransactionDate();
+
+        if ($lastTransaction === null) {
+            return null;
+        }
+
+        return $lastTransaction->lt(Carbon::today()->subMonthsNoOverflow(app(PolicySettings::class)->int('dormancy_months')));
     }
 
     /**

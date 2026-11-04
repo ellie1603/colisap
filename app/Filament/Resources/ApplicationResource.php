@@ -86,7 +86,7 @@ class ApplicationResource extends Resource
                             }),
                         Forms\Components\Select::make('bmpc_member_id')
                             ->label('Find BMPC member')
-                            ->placeholder('Type a name or Acct. Number')
+                            ->placeholder('Type a name, CIF Key or Savings number')
                             ->helperText('Pick the person to fill in their details from BMPC Members. Not on the list? Type the details below yourself.')
                             ->searchable()
                             ->getSearchResultsUsing(fn (string $search): array => BmpcMember::query()

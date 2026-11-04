@@ -84,17 +84,39 @@ class Branch extends Model
     }
 
     /**
-     * Normalize a free-text branch/sheet name ("BAROTAC VIEJO", "San Jose Branch", "Pres. Roxas") to a master branch.
+     * Like options(), labelled with the branch code ("002 - Culasi") so a search finds the branch by code or name.
+     *
+     * @return array<int, string>
+     */
+    public static function codedOptions(): array
+    {
+        return static::query()
+            ->where('is_active', true)
+            ->when(self::restrictedId(), fn (Builder $query, int $branchId) => $query->whereKey($branchId))
+            ->orderBy('sort_order')
+            ->get(['id', 'code', 'name'])
+            ->mapWithKeys(fn (self $branch) => [$branch->id => $branch->code ? "{$branch->code} - {$branch->name}" : $branch->name])
+            ->all();
+    }
+
+    /**
+     * Normalize a free-text branch/sheet name ("BAROTAC VIEJO", "San Jose Branch", "Pres. Roxas") or branch code
+     * ("002", "2", "002 - Culasi") to a master branch.
      */
     public static function resolve(?string $name): ?self
     {
+        $branches = self::$lookupCache[0] ??= static::query()->orderBy('sort_order')->get();
+
+        // A leading branch code wins: "002", "2" (Excel drops the zeros) or "002 - Culasi".
+        if (preg_match('/^\s*(\d{1,3})(?!\d)/', (string) $name, $match) && ($branch = $branches->firstWhere('code', str_pad($match[1], 3, '0', STR_PAD_LEFT)))) {
+            return $branch;
+        }
+
         $key = self::normalize((string) $name);
 
         if ($key === '') {
             return null;
         }
-
-        $branches = self::$lookupCache[0] ??= static::query()->orderBy('sort_order')->get();
 
         foreach ($branches as $branch) {
             $candidates = [$branch->name, $branch->code];

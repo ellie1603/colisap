@@ -92,6 +92,35 @@ class NameParser
         return [$this->titleCase(implode(' ', $tokens)), $suffix];
     }
 
+    /**
+     * An Account Name in the coop's "SURNAME, FIRST MIDDLE" form, in capitals. A name whose surname part was left
+     * blank in the file (", JEAN A NARCISO KIS" or ", ALOJADO, ANGELINA") is put back in that form; any other
+     * name is only tidied, so a business name ("BOTIKA NG BARANGAY") is never rearranged.
+     */
+    public function surnameFirst(string $accountName): string
+    {
+        $name = mb_strtoupper(trim(preg_replace('/\s+/', ' ', $accountName) ?? ''));
+
+        if (! str_starts_with($name, ',')) {
+            return rtrim($name, ' ,');
+        }
+
+        $rest = trim($name, ' ,');
+
+        if (str_contains($rest, ',')) {
+            return $rest;
+        }
+
+        // Written first name first: "JEAN A NARCISO KIS" → "NARCISO KIS, JEAN A."
+        $parts = $this->parse($rest);
+
+        if ($parts['first_name'] === '') {
+            return $rest;
+        }
+
+        return mb_strtoupper("{$parts['last_name']}, ".implode(' ', array_filter([$parts['first_name'], $parts['middle_name'], $parts['suffix']])));
+    }
+
     public function titleCase(?string $value): ?string
     {
         $value = $this->clean((string) $value);
