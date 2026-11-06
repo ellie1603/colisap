@@ -73,7 +73,7 @@ class AdminPanelProvider extends PanelProvider
                     950 => '11, 15, 40',
                 ],
             ])
-            ->renderHook(PanelsRenderHook::STYLES_AFTER, fn () => new HtmlString('<link rel="stylesheet" href="'.e(asset('css/colisap.css')).'?v=42">'))
+            ->renderHook(PanelsRenderHook::STYLES_AFTER, fn () => new HtmlString('<link rel="stylesheet" href="'.e(asset('css/colisap.css')).'?v=43">'))
             ->renderHook(PanelsRenderHook::GLOBAL_SEARCH_BEFORE, fn (): View => view('filament.topbar-date'))
             ->renderHook(PanelsRenderHook::GLOBAL_SEARCH_AFTER, fn (): View => view('filament.theme-toggle'))
             ->renderHook(PanelsRenderHook::SIDEBAR_FOOTER, fn (): View => view('filament.sidebar-footer'))

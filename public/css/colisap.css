@@ -1061,3 +1061,17 @@ body.fi-body { --cx-skel: rgba(30, 136, 200, .075); --cx-skel-shine: rgba(255, 2
 @media (prefers-reduced-motion: reduce) {
     .colisap-skel::after { display: none; }
 }
+
+/* Member profile tabs: a bordered label | value | label | value table */
+.colisap-detail-table { --cx-cell-line: rgba(30, 64, 120, .1); --cx-cell-label: rgba(30, 100, 170, .045); }
+.dark .colisap-detail-table { --cx-cell-line: rgba(255, 255, 255, .08); --cx-cell-label: rgba(255, 255, 255, .03); }
+.colisap-detail-table > dl > .fi-fo-component-ctn { gap: 1px; overflow: hidden; border: 1px solid var(--cx-cell-line); border-radius: .75rem; background: var(--cx-cell-line); }
+.colisap-detail-table > dl > .fi-fo-component-ctn > div { min-width: 0; background: var(--cx-card-bg, #fff); }
+/* An odd last cell fills the row, so no empty gap shows. */
+@media (min-width: 1024px) { .colisap-detail-table > dl > .fi-fo-component-ctn > div:last-child:nth-child(odd) { grid-column: 1 / -1; } }
+.colisap-detail-table .fi-in-entry-wrp { height: 100%; }
+.colisap-detail-table .fi-in-entry-wrp > div.sm\:grid-cols-3 { height: 100%; grid-template-columns: minmax(8rem, 38%) minmax(0, 1fr); gap: 0; align-items: stretch; }
+.colisap-detail-table .fi-in-entry-wrp > div.sm\:grid-cols-3 > div:first-child { padding: .7rem 1rem; background: var(--cx-cell-label); border-right: 1px solid var(--cx-cell-line); align-items: center; }
+.colisap-detail-table .fi-in-entry-wrp > div.sm\:grid-cols-3 > div:last-child { grid-column: auto; padding: .7rem 1rem; align-content: center; }
+.colisap-detail-table .fi-in-entry-wrp > div.sm\:grid-cols-3 > div:only-child { grid-column: 1 / -1; }
+.colisap-detail-table .fi-in-entry-wrp > div:not(.sm\:grid-cols-3) { padding: .9rem 1rem; }

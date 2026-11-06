@@ -153,9 +153,7 @@ class Claim extends Model
         $issues = [];
         $effectivity = $member->effectivityDate();
 
-        if (! $effectivity) {
-            $issues[] = 'Member has no approval date';
-        } elseif ($this->date_of_death && $this->date_of_death->lt($effectivity)) {
+        if ($effectivity && $this->date_of_death && $this->date_of_death->lt($effectivity)) {
             $issues[] = 'Death occurred during the 180-day waiting period (effective '.$effectivity->toFormattedDateString().')';
         }
 

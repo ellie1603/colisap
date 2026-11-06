@@ -114,7 +114,7 @@ class Monitoring extends Page implements HasTable
 
     public function table(Table $table): Table
     {
-        $table->searchPlaceholder('Search name or Acct. Number');
+        $table->searchPlaceholder('Search name or Savings Number');
 
         return match ($this->tab) {
             'upgrades' => $this->upgradesTable($table),
@@ -145,7 +145,7 @@ class Monitoring extends Page implements HasTable
     private function memberColumns(): array
     {
         return [
-            Tables\Columns\TextColumn::make('account_no')->label('Acct. Number')->fontFamily('mono')->searchable(),
+            Tables\Columns\TextColumn::make('account_no')->label('Savings Number')->fontFamily('mono')->searchable(),
             Tables\Columns\TextColumn::make('account_name')->label('Account Name')->wrap()
                 ->searchable(query: fn (Builder $query, string $search) => $query->searchName($search)),
             Tables\Columns\TextColumn::make('branch.name')->label('Branch')->visibleFrom('md'),
@@ -451,7 +451,7 @@ class Monitoring extends Page implements HasTable
             ->heading('Replenishment notices')
             ->description('Savings below the maintaining balance must be replenished within '.$this->policy()->int('replenishment_days').' days of notice (Policy II.4). Expired notices terminate '.Member::basicCategoryLabel().' participation or downgrade '.Member::higherCategoryLabel().' to '.Member::basicCategoryLabel().' (Policy VII).')
             ->columns([
-                Tables\Columns\TextColumn::make('member.account_no')->label('Acct. Number')->fontFamily('mono')->searchable(),
+                Tables\Columns\TextColumn::make('member.account_no')->label('Savings Number')->fontFamily('mono')->searchable(),
                 Tables\Columns\TextColumn::make('member.account_name')->label('Account Name')->wrap()
                     ->searchable(query: fn (Builder $query, string $search) => $query->whereHas('member', fn (Builder $q) => $q->searchName($search))),
                 Tables\Columns\TextColumn::make('member.branch.name')->label('Branch')->visibleFrom('lg'),

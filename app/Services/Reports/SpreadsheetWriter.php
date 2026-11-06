@@ -22,7 +22,7 @@ class SpreadsheetWriter
     /**
      * @param  list<string>  $headings
      * @param  iterable<array<int, mixed>>  $rows
-     * @param  list<int>  $textColumns  columns forced to text (e.g. Acct. Number with leading zeros)
+     * @param  list<int>  $textColumns  columns forced to text (e.g. Savings Number with leading zeros)
      * @param  list<string>  $titleLines  lines written above the headings (report title, filters)
      */
     public function download(string $baseName, string $format, array $headings, iterable $rows, array $textColumns = [], array $titleLines = []): StreamedResponse

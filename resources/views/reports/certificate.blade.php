@@ -39,7 +39,7 @@
     </div>
 
     <table class="details">
-        <tr><td class="label">Acct. Number</td><td>{{ $member->account_no }}</td></tr>
+        <tr><td class="label">Savings Number</td><td>{{ $member->account_no }}</td></tr>
         <tr><td class="label">Branch</td><td>{{ $member->branch?->name }}</td></tr>
         <tr><td class="label">Benefit category</td><td>{{ \App\Models\Member::categoryLabel($member->category) }} — PHP {{ number_format($member->benefitAmount(), 2) }} mortuary benefit</td></tr>
         <tr><td class="label">Application approved</td><td>{{ $member->approval_date?->format('F j, Y') }}</td></tr>

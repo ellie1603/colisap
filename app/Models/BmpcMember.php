@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use App\Models\Concerns\Auditable;
+use App\Services\Policy\PolicySettings;
 use Database\Factories\BmpcMemberFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 /**
  * A member of Barbaza MPC, from the coop's own member list — the people who may join COLISAP.
@@ -122,21 +124,40 @@ class BmpcMember extends Model
     }
 
     /**
-     * The transaction form fields this member fills in. The COLISAP Acct. Number is the member's savings number.
+     * The transaction form fields this member fills in. The COLISAP Savings Number is the member's savings number.
      *
-     * @return array{account_no: ?string, last_name: ?string, first_name: ?string, middle_name: ?string, branch_id: ?int, birthdate: ?string, contact_number: ?string, savings_balance: ?string}
+     * @return array{account_no: ?string, cif_key: ?string, last_name: ?string, first_name: ?string, middle_name: ?string, branch_id: ?int, birthdate: ?string, sex: ?string, contact_number: ?string, address: ?string, segment: ?string, savings_balance: ?string}
      */
     public function transactionDetails(): array
     {
         return [
             'account_no' => $this->savings_no,
+            'cif_key' => $this->cif_key,
             'last_name' => $this->last_name,
             'first_name' => $this->first_name,
             'middle_name' => $this->middle_name,
             'branch_id' => $this->branch_id,
             'birthdate' => $this->birthdate?->toDateString(),
+            'sex' => $this->sex,
             'contact_number' => $this->contact_number,
+            'address' => $this->address,
+            'segment' => $this->segment,
             'savings_balance' => $this->savings_balance,
         ];
+    }
+
+    /**
+     * "Active" or "Dormant" from the last transaction date and the dormancy period in Policy Settings;
+     * null when the list has no transaction date.
+     */
+    public function accountStatus(): ?string
+    {
+        if ($this->last_transaction_date === null) {
+            return null;
+        }
+
+        $dormantBefore = Carbon::today()->subMonthsNoOverflow(app(PolicySettings::class)->int('dormancy_months'));
+
+        return $this->last_transaction_date->lt($dormantBefore) ? 'Dormant' : 'Active';
     }
 }

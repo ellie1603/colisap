@@ -125,7 +125,7 @@ class WorkbookParserTest extends TestCase
     public static function invalidRows(): array
     {
         return [
-            'blank Acct. Number' => [['', '', 'SANTOS, MARIA', 'S', 'COLISAP40000', '1/2/2020'], 'Missing Acct. Number'],
+            'blank Acct. Number' => [['', '', 'SANTOS, MARIA', 'S', 'COLISAP40000', '1/2/2020'], 'Missing Savings Number'],
             'invalid category' => [['', '00101000049', 'SANTOS, MARIA', 'S', 'COLISAP30000', '1/2/2020'], 'Invalid category "COLISAP30000"'],
             'invalid approval date' => [['', '00101000049', 'SANTOS, MARIA', 'S', 'COLISAP40000', 'sometime'], 'Invalid approval date (new date) "sometime"'],
             'negative balance' => [['', '00101000049', 'SANTOS, MARIA', 'S', 'COLISAP40000', '1/2/2020', null, null, null, null, null, null, -5], 'Negative savings balance -5.00'],
@@ -218,8 +218,8 @@ class WorkbookParserTest extends TestCase
             'D' => ['D', 'D'],
             'gold word' => ['Gold', 'G'],
             'lowercase s' => ['s', 'S'],
-            'regular is no longer a segment' => ['R', null],
-            'regular spelled out' => ['Regular', null],
+            'regular letter' => ['R', 'R'],
+            'regular spelled out' => ['Regular', 'R'],
             'excel error' => ['#N/A', null],
             'unknown' => ['X', null],
         ];

@@ -77,17 +77,17 @@ class GeneralPolicyTest extends TestCase
         $this->assertSame([2500.0, 30.0, 30], [$policy->decimal('min_balance_60k'), $policy->decimal('reapplication_fee'), $policy->int('alert_window_days')]);
     }
 
-    public function test_regular_is_no_longer_a_segment_and_imports_as_unassigned_without_a_complaint(): void
+    public function test_regular_is_a_segment_and_imports_as_regular(): void
     {
-        $this->assertSame(['D' => 'Diamond', 'G' => 'Gold', 'S' => 'Silver'], Member::SEGMENTS);
-        $this->assertArrayNotHasKey('segment_R', ReportService::REPORTS);
+        $this->assertSame(['D' => 'Diamond', 'G' => 'Gold', 'S' => 'Silver', 'R' => 'Regular'], Member::SEGMENTS);
+        $this->assertArrayHasKey('segment_R', ReportService::REPORTS);
 
         $parser = app(WorkbookParser::class);
         [, $columns] = $parser->detectHeader([['Acct. Number', 'Account Name', 'Segmentation', 'Category', 'NEW Date of Approval']]);
         $row = $parser->normalizeRow(['00101959720', 'DELA CRUZ, JUAN A.', 'R', 'COLISAP40000', '6/3/1998'], $columns);
 
-        $this->assertNull($row['data']['segment']);
-        $this->assertSame(['No segmentation — left Unassigned'], $row['warnings']);
+        $this->assertSame('R', $row['data']['segment']);
+        $this->assertSame([], $row['warnings']);
     }
 
     public function test_tables_offer_reset_filters_instead_of_the_column_toggle(): void

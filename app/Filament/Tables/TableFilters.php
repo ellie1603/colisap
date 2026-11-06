@@ -54,7 +54,7 @@ class TableFilters
     }
 
     /**
-     * Diamond, Gold, Silver, or NA (no segmentation).
+     * Diamond, Gold, Silver, Regular, or NA (no segmentation).
      */
     public static function segmentation(string $column = 'segment'): SelectFilter
     {

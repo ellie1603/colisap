@@ -60,7 +60,7 @@ class ListApplications extends ListRecords
                 ->visible(fn () => Auth::user()?->can('savings.manage') ?? false)
                 ->disabled(fn () => $this->savingsFile !== null)
                 ->modalHeading('Import savings')
-                ->modalDescription('Upload a savings list to update members already in the system. The system reads the Acct. Number (or CIF Key), the savings balance and the last transaction date: each change is recorded as a savings transaction, and members with no transaction for 3 months are marked dormant in transaction, and those below the dormant-in-balance amount dormant in balance.')
+                ->modalDescription('Upload a savings list to update members already in the system. The system reads the Savings Number (or CIF Key), the savings balance and the last transaction date: each change is recorded as a savings transaction, and members with no transaction for 3 months are marked dormant in transaction, and those below the dormant-in-balance amount dormant in balance.')
                 ->modalSubmitActionLabel('Import')
                 ->form([
                     Forms\Components\FileUpload::make('file')
@@ -118,7 +118,7 @@ class ListApplications extends ListRecords
 
         if ($sheets === []) {
             Storage::disk(self::DISK)->delete($data['file']);
-            Notification::make()->warning()->title('No savings list found')->body('No sheet has an Acct. Number (or CIF Key) column together with a savings balance column.')->send();
+            Notification::make()->warning()->title('No savings list found')->body('No sheet has a Savings Number (or CIF Key) column together with a savings balance column.')->send();
 
             return;
         }
@@ -182,7 +182,7 @@ class ListApplications extends ListRecords
         $notes = array_filter([
             $summary['not_found'] ? number_format($summary['not_found']).' account(s) are not members and were skipped.' : null,
             $summary['other_branch'] ? number_format($summary['other_branch']).' member(s) of other branches were left out.' : null,
-            $summary['skipped'] ? number_format($summary['skipped']).' row(s) without an Acct. Number or a readable balance were skipped.' : null,
+            $summary['skipped'] ? number_format($summary['skipped']).' row(s) without a Savings Number or a readable balance were skipped.' : null,
         ]);
 
         Notification::make()

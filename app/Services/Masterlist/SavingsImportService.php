@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Updates the savings of members already in the system from a branch's savings list: one row per member with
- * the Acct. Number, the current savings balance and (optionally) the last transaction date. A changed balance is
+ * the Savings Number, the current savings balance and (optionally) the last transaction date. A changed balance is
  * recorded as a savings transaction, the last transaction date is kept, and each member is marked dormant in
  * transaction (dormant-txn) or in balance (dormant-bal) before their status is worked out again. Accounts that
  * are not members are skipped. Each upload is kept in Import History, where deleting it takes the balances back.
@@ -53,7 +53,7 @@ class SavingsImportService
     }
 
     /**
-     * The sheets with an Acct. Number (or CIF Key) column and a savings balance column.
+     * The sheets with a Savings Number (or CIF Key) column and a savings balance column.
      *
      * @return list<array{index: int, name: string, header_row: int, account_column: int, balance_column: int, last_transaction_column: ?int}>
      */
@@ -115,7 +115,7 @@ class SavingsImportService
     }
 
     /**
-     * @param  array<string, array{balance: float, last_transaction: ?string}>  $rows  keyed by Acct. Number
+     * @param  array<string, array{balance: float, last_transaction: ?string}>  $rows  keyed by Savings Number
      * @param  array{updated: int, unchanged: int, not_found: int, other_branch: int, skipped: int, sheets: int}  $summary
      */
     private function save(array $rows, array &$summary, ImportBatch $batch): void

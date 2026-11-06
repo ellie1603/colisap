@@ -165,7 +165,7 @@ class MasterlistImportServiceTest extends TestCase
 
         $this->assertSame([1, 1], [$batch->new_rows, $batch->duplicate_rows]);
         $this->assertSame(
-            ['Duplicate Acct. Number — already listed in Barbaza row 5'],
+            ['Duplicate Savings Number — already listed in Barbaza row 5'],
             $batch->rows()->where('action', 'duplicate')->sole()->errors,
         );
     }
@@ -185,7 +185,7 @@ class MasterlistImportServiceTest extends TestCase
             $service->importChunk($batch);
             $this->fail('A file with duplicates must not be imported.');
         } catch (RuntimeException $exception) {
-            $this->assertStringContainsString('lists 1 Acct. Number(s) more than once, so nothing was imported', $exception->getMessage());
+            $this->assertStringContainsString('lists 1 Savings Number(s) more than once, so nothing was imported', $exception->getMessage());
         }
 
         $this->assertSame(['staged', 0], [$batch->refresh()->status, Member::count()]);
@@ -212,7 +212,7 @@ class MasterlistImportServiceTest extends TestCase
 
         $this->assertSame(2, $batch->new_rows);
         $this->assertSame(
-            ['Possible double entry: a member with the same name is already in this branch under Acct. Number 00101000001'],
+            ['Possible double entry: a member with the same name is already in this branch under Savings Number 00101000001'],
             $batch->rows()->where('account_no', '00101000002')->sole()->warnings,
         );
         $this->assertSame([], $batch->rows()->where('account_no', '00101000003')->sole()->warnings);
@@ -238,7 +238,7 @@ class MasterlistImportServiceTest extends TestCase
 
         $this->assertSame([0, 1, 2], [$batch->new_rows, $batch->update_rows, $batch->invalid_rows]);
         $this->assertSame(
-            ['00301493996' => ['No mobile number in this row'], '00999999999' => ['No member has this Acct. Number — mobile number not imported']],
+            ['00301493996' => ['No mobile number in this row'], '00999999999' => ['No member has this Savings Number — mobile number not imported']],
             $batch->rows()->where('action', 'invalid')->orderBy('account_no')->get()->mapWithKeys(fn (ImportRow $row) => [$row->account_no => $row->errors])->all(),
         );
 
@@ -267,7 +267,7 @@ class MasterlistImportServiceTest extends TestCase
             'Culasi' => $this->sheet(['', '00101000001', 'ONE, FIRST', 'R', 'COLISAP40000', '1/1/2020', '', '', '', 1000, '']),
         ]);
 
-        $this->assertSame(['total' => 5, 'new' => 1, 'duplicate' => 1, 'invalid' => 3], [
+        $this->assertSame(['total' => 5, 'new' => 2, 'duplicate' => 1, 'invalid' => 2], [
             'total' => $batch->total_rows, 'new' => $batch->new_rows, 'duplicate' => $batch->duplicate_rows, 'invalid' => $batch->invalid_rows,
         ]);
 
@@ -275,10 +275,21 @@ class MasterlistImportServiceTest extends TestCase
         app(MasterlistImportService::class)->errorReport($batch)->sendContent();
         $csv = ob_get_clean();
 
-        $this->assertStringContainsString('Missing Acct. Number', $csv);
+        $this->assertStringContainsString('Missing Savings Number', $csv);
         $this->assertStringContainsString('Invalid category', $csv);
-        $this->assertStringContainsString('New member has no approval (NEW) date', $csv);
-        $this->assertStringContainsString('Duplicate Acct. Number — already listed in Barbaza row 5', $csv);
+        $this->assertStringNotContainsString('NODATE, NEWBIE', $csv, 'A new member without an approval date is imported, not reported.');
+        $this->assertStringContainsString('Duplicate Savings Number — already listed in Barbaza row 5', $csv);
+    }
+
+    public function test_new_member_without_approval_date_is_imported_as_active(): void
+    {
+        $this->import($this->stage([
+            'Barbaza' => $this->sheet(['', '00101000003', 'NODATE, NEWBIE', 'R', 'COLISAP40000', '', '', '', '', 5000, '']),
+        ]));
+
+        $member = Member::where('account_no', '00101000003')->sole();
+
+        $this->assertSame([null, 'active', 'R'], [$member->approval_date, $member->status, $member->segment]);
     }
 
     public function test_side_lists_flag_dormant_and_deceased_accounts(): void

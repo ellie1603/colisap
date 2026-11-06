@@ -249,7 +249,7 @@ class MonitoringService
             ['warning', 'Savings below minimum', 'Participating members below their maintaining balance.', $this->belowMinimumBalance()->count(), Monitoring::getUrl(['tab' => 'replenishment'])],
             ['info', 'Waiting period ending soon', "Members becoming effective within {$window} days.", $this->becomingEffectiveWithin($window)->count(), Monitoring::getUrl(['tab' => 'effectivity'])],
             ['info', 'Upgrade eligibility', 'Members whose 90-day upgrade waiting period is complete.', $this->upgradeQuery('eligible')->count(), Monitoring::getUrl(['tab' => 'upgrades'])],
-            ['info', 'Incomplete member information', 'Members without approval date or branch.', Member::query()->participating()->where(fn (Builder $q) => $q->whereNull('approval_date')->orWhereNull('branch_id'))->count(), MemberResource::getUrl('index')],
+            ['info', 'Incomplete member information', 'Members without a branch.', Member::query()->participating()->whereNull('branch_id')->count(), MemberResource::getUrl('index')],
         ];
 
         // Security alert for whoever can read the audit log: sign-ins locked after repeated wrong passwords.

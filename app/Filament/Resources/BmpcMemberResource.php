@@ -19,7 +19,7 @@ use Illuminate\Support\Js;
 /**
  * Every Barbaza MPC member, imported from the coop's Excel list — the people who may join COLISAP.
  * Not COLISAP data: it only fills in new and active member transactions. A member is identified by their CIF Key;
- * their savings number is the savings account the balance belongs to and the Acct. Number COLISAP knows them by.
+ * their savings number is the savings account the balance belongs to and the Savings Number COLISAP knows them by.
  * Staff who can import may also correct a member's details by hand; the next import of the same CIF Key
  * overwrites them with the file's values.
  */

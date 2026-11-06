@@ -49,7 +49,7 @@ class Branch extends Model
 
     /**
      * Run work that must see every branch whoever is signed in — a masterlist import matches
-     * Acct. Numbers across the whole cooperative so a member is never created twice.
+     * Savings Numbers across the whole cooperative so a member is never created twice.
      *
      * @template T
      *

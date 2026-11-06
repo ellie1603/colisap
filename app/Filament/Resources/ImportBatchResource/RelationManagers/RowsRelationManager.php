@@ -35,7 +35,7 @@ class RowsRelationManager extends RelationManager
             ->columns([
                 Tables\Columns\TextColumn::make('sheet')->searchable()->visibleFrom('md'),
                 Tables\Columns\TextColumn::make('row_number')->label('Row'),
-                Tables\Columns\TextColumn::make('account_no')->label('Acct. Number')->fontFamily('mono')->searchable(),
+                Tables\Columns\TextColumn::make('account_no')->label('Savings Number')->fontFamily('mono')->searchable(),
                 Tables\Columns\TextColumn::make('account_name')->label('Account Name')->searchable()->wrap()->visibleFrom('sm'),
                 Tables\Columns\TextColumn::make('action')->label('Classification')->badge()
                     ->formatStateUsing(fn (string $state) => $state === 'reference' ? 'Side list' : (ImportRow::ACTIONS[$state] ?? $state))

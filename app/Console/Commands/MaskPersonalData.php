@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Storage;
 class MaskPersonalData extends Command
 {
     /**
-     * @var array<string, string> real Acct. Number => masked Acct. Number
+     * @var array<string, string> real Savings Number => masked Savings Number
      */
     private array $accounts = [];
 
@@ -62,6 +62,7 @@ class MaskPersonalData extends Command
 
                 DB::table('members')->where('id', $member->id)->update([
                     'account_no' => $accountNo,
+                    'cif_key' => null,
                     'account_name' => "{$last}, ".mb_strtoupper($first).' '.mb_strtoupper(mb_substr($middle, 0, 1)).'.',
                     'last_name' => $last,
                     'first_name' => $first,
@@ -71,6 +72,8 @@ class MaskPersonalData extends Command
                     'contact_number' => $member->contact_number ? '09'.fake()->numerify('#########') : null,
                     'email' => $member->email ? fake()->unique()->safeEmail() : null,
                     'address' => $member->address ? fake()->streetAddress() : null,
+                    'office_address' => $member->office_address ? fake()->streetAddress() : null,
+                    'employer' => $member->employer ? fake()->company() : null,
                     'source_values' => null,
                     'remarks' => null,
                     'withdrawal_reason' => $member->withdrawal_reason ? 'Personal reasons' : null,
@@ -95,6 +98,10 @@ class MaskPersonalData extends Command
                     'middle_name' => $application->middle_name ? fake()->lastName() : null,
                     'birthdate' => $this->sameYear($application->birthdate),
                     'contact_number' => $application->contact_number ? '09'.fake()->numerify('#########') : null,
+                    'cif_key' => null,
+                    'address' => $application->address ? fake()->streetAddress() : null,
+                    'office_address' => $application->office_address ? fake()->streetAddress() : null,
+                    'employer' => $application->employer ? fake()->company() : null,
                     'remarks' => null,
                     'rejection_reason' => $application->rejection_reason ? 'Requirements incomplete' : null,
                 ]);

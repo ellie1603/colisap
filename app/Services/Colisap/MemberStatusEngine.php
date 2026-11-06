@@ -84,16 +84,19 @@ class MemberStatusEngine
     {
         $effectivity = $member->effectivityDate();
 
-        if (! $effectivity || $today->lt($effectivity)) {
+        // The approval (NEW) date only starts a waiting period when there is one; a member without it is already covered.
+        if ($effectivity && $today->lt($effectivity)) {
             return [['status' => 'waiting', 'dormant_since' => null], 'Within the '.$this->policy->int('effectivity_days').'-day waiting period (Policy III.1)'];
         }
 
         $dormantSince = $this->dormantSince($member, $today);
 
         if ($dormantSince === null) {
-            $reason = $member->status === 'waiting'
-                ? 'Effective '.$effectivity->toFormattedDateString().' after the '.$this->policy->int('effectivity_days').'-day waiting period (Policy III.1)'
-                : 'Account activity resumed';
+            $reason = match (true) {
+                $member->status !== 'waiting' => 'Account activity resumed',
+                $effectivity === null => 'No approval date — no waiting period',
+                default => 'Effective '.$effectivity->toFormattedDateString().' after the '.$this->policy->int('effectivity_days').'-day waiting period (Policy III.1)',
+            };
 
             return [[
                 'status' => 'active',

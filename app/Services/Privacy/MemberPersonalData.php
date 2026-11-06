@@ -50,7 +50,7 @@ class MemberPersonalData
 
     /**
      * Permanently removes an archived member and every record that holds their personal data. Only the fact that
-     * an erasure happened is kept (with the Acct. Number and reason), so the cooperative can show it was done.
+     * an erasure happened is kept (with the Savings Number and reason), so the cooperative can show it was done.
      */
     public function erase(Member $member, string $reason): void
     {
@@ -62,7 +62,7 @@ class MemberPersonalData
         $document = $member->withdrawal_document;
 
         DB::transaction(function () use ($member, $accountNo, $reason) {
-            // Applications filed under this Acct. Number but never linked (e.g. rejected) hold the same details.
+            // Applications filed under this Savings Number but never linked (e.g. rejected) hold the same details.
             $applications = Application::query()->withoutGlobalScopes()
                 ->where(fn ($query) => $query->where('member_id', $member->id)->orWhere('account_no', $accountNo))
                 ->pluck('id');

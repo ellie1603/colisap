@@ -53,7 +53,7 @@ class MemberResource extends Resource
                     ->columns(['default' => 1, 'sm' => 2, 'lg' => 3])
                     ->schema([
                         Forms\Components\TextInput::make('account_no')
-                            ->label('Acct. Number')
+                            ->label('Savings Number')
                             ->helperText('Savings account number — the member\'s unique ID. Leading zeros are kept.')
                             ->required()
                             ->maxLength(30)
@@ -61,6 +61,10 @@ class MemberResource extends Resource
                             ->unique(ignoreRecord: true)
                             ->disabled(fn (string $operation) => $operation === 'edit' && ! static::canEditColisapFields())
                             ->dehydrateStateUsing(fn (?string $state) => $state === null ? null : trim($state)),
+                        Forms\Components\TextInput::make('cif_key')
+                            ->label('CIF Key')
+                            ->helperText('Filled from the BMPC member list when the Savings Number and name match.')
+                            ->maxLength(30),
                         Forms\Components\Select::make('branch_id')
                             ->label('Branch')
                             ->options(fn () => Branch::options())
@@ -89,7 +93,8 @@ class MemberResource extends Resource
 
                                 return "Age {$age->y} yrs {$age->m} mos{$warning}";
                             }),
-                        Forms\Components\Select::make('sex')->options(['male' => 'Male', 'female' => 'Female']),
+                        Forms\Components\Select::make('sex')->options(Member::SEXES),
+                        Forms\Components\Select::make('civil_status')->options(Member::CIVIL_STATUSES),
                         Forms\Components\TextInput::make('contact_number')->tel()->maxLength(50),
                         Forms\Components\Toggle::make('sms_opt_out')
                             ->label('Does not want SMS reminders')
@@ -98,7 +103,12 @@ class MemberResource extends Resource
                                 : 'Turn on when the member asks not to be texted. SMS reminders from Monitoring will skip them.')
                             ->inline(false),
                         Forms\Components\TextInput::make('email')->email()->maxLength(255),
-                        Forms\Components\Textarea::make('address')->rows(2)->columnSpanFull(),
+                        Forms\Components\TextInput::make('occupation')->maxLength(255),
+                        Forms\Components\TextInput::make('employer')->maxLength(255),
+                        Forms\Components\TextInput::make('religion')->maxLength(100),
+                        Forms\Components\TextInput::make('dependents')->label('No. of dependents')->integer()->minValue(0)->maxValue(30),
+                        Forms\Components\Textarea::make('address')->rows(2)->maxLength(1000),
+                        Forms\Components\Textarea::make('office_address')->rows(2)->maxLength(1000),
                     ]),
                 Forms\Components\Section::make('COLISAP')
                     ->description('Waiting / Active / Dormant are computed from policy. Only Admins can change status, category and segmentation directly.')
@@ -160,24 +170,34 @@ class MemberResource extends Resource
                     ->tabs([
                         Infolists\Components\Tabs\Tab::make('Overview')
                             ->icon('heroicon-m-identification')
-                            ->columns(['default' => 1, 'sm' => 2, 'lg' => 4])
+                            ->columns(['default' => 1, 'lg' => 2])
+                            ->inlineLabel()
+                            ->extraAttributes(['class' => 'colisap-detail-table'])
                             ->schema([
-                                Infolists\Components\TextEntry::make('account_no')->label('Acct. Number')->copyable()->weight('bold'),
+                                Infolists\Components\TextEntry::make('account_no')->label('Savings Number')->copyable()->weight('bold'),
+                                Infolists\Components\TextEntry::make('cif_key')->label('CIF Key')->copyable()->placeholder('Not matched to the BMPC list'),
                                 Infolists\Components\TextEntry::make('account_name')->label('Account Name'),
                                 Infolists\Components\TextEntry::make('branch.name')->label('Branch')->placeholder('Not set'),
+                                Infolists\Components\TextEntry::make('birthdate')->date()->placeholder('—')
+                                    ->helperText(fn (Member $record) => $record->age() !== null ? $record->age().' years old' : null),
+                                Infolists\Components\TextEntry::make('contact_number')->label('Contact Number')->placeholder('—'),
+                                Infolists\Components\TextEntry::make('savings_balance')->label('Savings Balance')->money('PHP')->placeholder('Not known')
+                                    ->color(fn (Member $record) => $record->meetsMinimumBalance() ? null : 'danger')
+                                    ->helperText(fn (Member $record) => 'Minimum ₱'.number_format($record->minimumBalance(), 2)),
+                                Infolists\Components\TextEntry::make('overview_last_transaction_date')->label('Last Transaction Date')
+                                    ->state(fn (Member $record) => $record->lastTransactionDate())->date()->placeholder('Not recorded'),
+                                Infolists\Components\TextEntry::make('segment')->label('Segmentation')->badge()->default('—')
+                                    ->formatStateUsing(fn (Member $record) => Member::segmentLabel($record->segment))
+                                    ->color(fn (Member $record) => $record->segment ? 'primary' : 'gray'),
+                                Infolists\Components\TextEntry::make('category')->label('Category')->badge()
+                                    ->formatStateUsing(fn (Member $record) => Member::categoryLabel($record->category).' — ₱'.number_format($record->benefitAmount())),
                                 Infolists\Components\TextEntry::make('status')
                                     ->badge()
                                     ->formatStateUsing(fn (string $state) => Member::STATUSES[$state] ?? $state)
                                     ->color(fn (string $state) => Member::statusColor($state))
                                     ->icon(fn (string $state) => Member::statusIcon($state)),
-                                Infolists\Components\TextEntry::make('category')->label('Benefit category')->badge()
-                                    ->formatStateUsing(fn (Member $record) => Member::categoryLabel($record->category).' — ₱'.number_format($record->benefitAmount())),
-                                Infolists\Components\TextEntry::make('segment')->label('Segmentation')->badge()->default('—')
-                                    ->formatStateUsing(fn (Member $record) => Member::segmentLabel($record->segment))
-                                    ->color(fn (Member $record) => $record->segment ? 'primary' : 'gray'),
-                                Infolists\Components\TextEntry::make('savings_balance')->label('Savings balance')->money('PHP')->placeholder('Not known')
-                                    ->color(fn (Member $record) => $record->meetsMinimumBalance() ? null : 'danger')
-                                    ->helperText(fn (Member $record) => 'Minimum ₱'.number_format($record->minimumBalance(), 2)),
+                                Infolists\Components\TextEntry::make('overview_remarks')->label('Remarks')
+                                    ->state(fn (Member $record) => $record->accountRemarks() ?? $record->remarks)->placeholder('—'),
                                 Infolists\Components\TextEntry::make('effectivity')->label('Effectivity date')
                                     ->state(fn (Member $record) => $record->effectivityDate()?->toFormattedDateString() ?? 'No approval date')
                                     ->helperText(fn (Member $record) => $record->status === 'waiting' && $record->daysUntilEffective() !== null ? $record->daysUntilEffective().' day(s) remaining' : null),
@@ -202,7 +222,9 @@ class MemberResource extends Resource
                             ]),
                         Infolists\Components\Tabs\Tab::make('Personal')
                             ->icon('heroicon-m-user')
-                            ->columns(['default' => 1, 'sm' => 2, 'lg' => 4])
+                            ->columns(['default' => 1, 'lg' => 2])
+                            ->inlineLabel()
+                            ->extraAttributes(['class' => 'colisap-detail-table'])
                             ->schema([
                                 Infolists\Components\TextEntry::make('last_name'),
                                 Infolists\Components\TextEntry::make('first_name'),
@@ -210,17 +232,25 @@ class MemberResource extends Resource
                                 Infolists\Components\TextEntry::make('suffix')->placeholder('—'),
                                 Infolists\Components\TextEntry::make('birthdate')->date()->placeholder('—')
                                     ->helperText(fn (Member $record) => $record->age() !== null ? $record->age().' years old' : null),
-                                Infolists\Components\TextEntry::make('sex')->formatStateUsing(fn (?string $state) => ucfirst((string) $state))->placeholder('—'),
+                                Infolists\Components\TextEntry::make('sex')->formatStateUsing(fn (?string $state) => Member::SEXES[$state] ?? ucfirst((string) $state))->placeholder('—'),
+                                Infolists\Components\TextEntry::make('civil_status')->formatStateUsing(fn (?string $state) => Member::CIVIL_STATUSES[$state] ?? $state)->placeholder('—'),
                                 Infolists\Components\TextEntry::make('contact_number')->placeholder('—')
                                     ->helperText(fn (Member $record) => $record->sms_opt_out
                                         ? 'No SMS reminders (member’s request'.($record->sms_opt_out_at ? ', since '.$record->sms_opt_out_at->toFormattedDateString() : '').')'
                                         : null),
                                 Infolists\Components\TextEntry::make('email')->placeholder('—'),
-                                Infolists\Components\TextEntry::make('address')->placeholder('—')->columnSpanFull(),
+                                Infolists\Components\TextEntry::make('occupation')->placeholder('—'),
+                                Infolists\Components\TextEntry::make('employer')->placeholder('—'),
+                                Infolists\Components\TextEntry::make('religion')->placeholder('—'),
+                                Infolists\Components\TextEntry::make('dependents')->label('No. of dependents')->placeholder('—'),
+                                Infolists\Components\TextEntry::make('address')->placeholder('—'),
+                                Infolists\Components\TextEntry::make('office_address')->placeholder('—'),
                             ]),
                         Infolists\Components\Tabs\Tab::make('COLISAP')
                             ->icon('heroicon-m-shield-check')
-                            ->columns(['default' => 1, 'sm' => 2, 'lg' => 4])
+                            ->columns(['default' => 1, 'lg' => 2])
+                            ->inlineLabel()
+                            ->extraAttributes(['class' => 'colisap-detail-table'])
                             ->schema([
                                 Infolists\Components\TextEntry::make('application_date')->date()->placeholder('—'),
                                 Infolists\Components\TextEntry::make('approval_date')->date()->placeholder('—'),
@@ -239,7 +269,9 @@ class MemberResource extends Resource
                             ]),
                         Infolists\Components\Tabs\Tab::make('Savings')
                             ->icon('heroicon-m-banknotes')
-                            ->columns(['default' => 1, 'sm' => 2, 'lg' => 4])
+                            ->columns(['default' => 1, 'lg' => 2])
+                            ->inlineLabel()
+                            ->extraAttributes(['class' => 'colisap-detail-table'])
                             ->schema([
                                 Infolists\Components\TextEntry::make('savings_balance')->money('PHP')->placeholder('Not known'),
                                 Infolists\Components\TextEntry::make('savings_balance_as_of')->label('Balance as of')->date()->placeholder('—'),
@@ -255,13 +287,15 @@ class MemberResource extends Resource
                             ]),
                         Infolists\Components\Tabs\Tab::make('Source')
                             ->icon('heroicon-m-document-arrow-up')
-                            ->columns(['default' => 1, 'sm' => 2, 'lg' => 4])
+                            ->columns(['default' => 1, 'lg' => 2])
+                            ->inlineLabel()
+                            ->extraAttributes(['class' => 'colisap-detail-table'])
                             ->schema([
                                 Infolists\Components\TextEntry::make('importBatch.file_name')->label('Last import file')->placeholder('Entered manually'),
                                 Infolists\Components\TextEntry::make('source_sheet')->label('Sheet')->placeholder('—'),
                                 Infolists\Components\TextEntry::make('source_row')->label('Row')->placeholder('—'),
                                 Infolists\Components\TextEntry::make('creator.name')->label('Created by')->placeholder('System'),
-                                Infolists\Components\KeyValueEntry::make('source_values')->label('Original masterlist values')->columnSpanFull()
+                                Infolists\Components\KeyValueEntry::make('source_values')->label('Original masterlist values')->columnSpanFull()->inlineLabel(false)
                                     ->keyLabel('Column')->valueLabel('Value'),
                             ]),
                     ]),
@@ -271,12 +305,15 @@ class MemberResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['branch', 'bmpcMember:id,savings_no,last_transaction_date']))
-            ->searchPlaceholder('Search name or Acct. Number')
+            ->modifyQueryUsing(fn (Builder $query) => $query->with('branch'))
+            ->searchPlaceholder('Search name, Savings Number or CIF Key')
+            // Only the everyday details, so the row actions stay in view; the rest is on the member page and in the export.
             ->columns([
                 Tables\Columns\TextColumn::make('account_no')
-                    ->label('Acct. Number')
-                    ->searchable()
+                    ->label('Savings Number')
+                    ->searchable(query: fn (Builder $query, string $search): Builder => $query
+                        ->where('account_no', 'like', "%{$search}%")
+                        ->orWhere('cif_key', 'like', "%{$search}%"))
                     ->sortable()
                     ->copyable()
                     ->fontFamily('mono'),
@@ -290,7 +327,19 @@ class MemberResource extends Resource
                     ->label('Branch')
                     ->sortable()
                     ->visibleFrom('md'),
-
+                Tables\Columns\TextColumn::make('savings_balance')
+                    ->label('Savings Balance')
+                    ->money('PHP')
+                    ->placeholder('Not known')
+                    ->sortable()
+                    ->alignEnd()
+                    ->color(fn (Member $record) => $record->meetsMinimumBalance() ? null : 'danger')
+                    ->visibleFrom('md'),
+                Tables\Columns\TextColumn::make('category')
+                    ->badge()
+                    ->formatStateUsing(fn (string $state) => Member::categoryLabel($state))
+                    ->color(fn (string $state) => $state === '60000' ? 'warning' : 'gray')
+                    ->visibleFrom('sm'),
                 Tables\Columns\TextColumn::make('segment')
                     ->label('Segmentation')
                     ->badge()
@@ -298,58 +347,12 @@ class MemberResource extends Resource
                     ->default('—')
                     ->color(fn (Member $record) => $record->segment ? 'primary' : 'gray')
                     ->visibleFrom('lg'),
-                Tables\Columns\TextColumn::make('category')
-                    ->badge()
-                    ->formatStateUsing(fn (string $state) => Member::categoryLabel($state))
-                    ->color(fn (string $state) => $state === '60000' ? 'warning' : 'gray')
-                    ->visibleFrom('sm'),
-                Tables\Columns\TextColumn::make('membership_date')
-                    ->label('Application Date')
-                    ->state(fn (Member $record) => $record->application_date ?? $record->approval_date)
-                    ->date()
-                    ->placeholder('—')
-                    ->sortable(query: fn (Builder $query, string $direction) => $query->orderByRaw('coalesce(application_date, approval_date) '.($direction === 'desc' ? 'desc' : 'asc')))
-                    ->visibleFrom('lg'),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->formatStateUsing(fn (string $state) => Member::STATUSES[$state] ?? ucfirst($state))
                     ->color(fn (string $state) => Member::statusColor($state))
                     ->icon(fn (string $state) => Member::statusIcon($state))
                     ->sortable(),
-                Tables\Columns\TextColumn::make('savings_balance')
-                    ->label('Saving Balance')
-                    ->money('PHP')
-                    ->placeholder('Not known')
-                    ->sortable()
-                    ->alignEnd()
-                    ->color(fn (Member $record) => $record->meetsMinimumBalance() ? null : 'danger')
-                    ->visibleFrom('md'),
-                // The other details (name parts, birthdate and age, sex, contact number) are on the member's page:
-                // every extra column makes this list slower to draw.
-                // Falls back to the BMPC member list's date; Active / Dormant follows the dormancy period in Policy Settings.
-                Tables\Columns\TextColumn::make('last_transaction_date')
-                    ->label('Last transaction date')
-                    ->state(fn (Member $record) => $record->lastTransactionDate())
-                    ->date()
-                    ->placeholder('—')
-                    ->description(fn (Member $record) => match ($record->hasDormantTransactions()) {
-                        true => 'Dormant',
-                        false => 'Active',
-                        null => null,
-                    })
-                    ->color(fn (Member $record) => match ($record->hasDormantTransactions()) {
-                        true => 'warning',
-                        false => 'success',
-                        null => null,
-                    })
-                    ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy(Member::lastTransactionDateExpression(), $direction === 'desc' ? 'desc' : 'asc'))
-                    ->visibleFrom('xl'),
-                Tables\Columns\TextColumn::make('remarks')
-                    ->state(fn (Member $record) => $record->accountRemarks())
-                    ->placeholder('—')
-                    ->badge()
-                    ->color(fn (?string $state) => in_array($state, ['Deceased', 'Deactivated'], true) ? 'danger' : 'warning')
-                    ->visibleFrom('lg'),
             ])
             ->filters([
                 // No status filter: the status tabs above the table already do that in one click.

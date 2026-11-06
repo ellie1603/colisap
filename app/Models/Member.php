@@ -57,7 +57,18 @@ class Member extends Model
         'D' => 'Diamond',
         'G' => 'Gold',
         'S' => 'Silver',
+        'R' => 'Regular',
     ];
+
+    /**
+     * @var array<string, string>
+     */
+    public const SEXES = ['male' => 'Male', 'female' => 'Female'];
+
+    /**
+     * @var array<string, string>
+     */
+    public const CIVIL_STATUSES = ['single' => 'Single', 'married' => 'Married', 'widowed' => 'Widowed', 'separated' => 'Separated'];
 
     /**
      * Fields whose changes are written to member_histories.
@@ -68,6 +79,7 @@ class Member extends Model
 
     protected $fillable = [
         'account_no',
+        'cif_key',
         'account_name',
         'branch_id',
         'first_name',
@@ -76,11 +88,17 @@ class Member extends Model
         'suffix',
         'birthdate',
         'sex',
+        'civil_status',
         'contact_number',
         'sms_opt_out',
         'sms_opt_out_at',
         'email',
         'address',
+        'occupation',
+        'office_address',
+        'employer',
+        'religion',
+        'dependents',
         'application_date',
         'approval_date',
         'status',
@@ -110,6 +128,7 @@ class Member extends Model
 
     protected $casts = [
         'birthdate' => 'date',
+        'dependents' => 'integer',
         'application_date' => 'date',
         'approval_date' => 'date',
         'activated_at' => 'date',
@@ -293,7 +312,7 @@ class Member extends Model
     }
 
     /**
-     * The same person on the coop's BMPC member list: the BMPC member whose savings number is this Acct. Number.
+     * The same person on the coop's BMPC member list: the BMPC member whose savings number is this Savings Number.
      */
     public function bmpcMember(): HasOne
     {
@@ -363,7 +382,7 @@ class Member extends Model
     // ---------------------------------------------------------------- Scopes
 
     /**
-     * Match every word of the search against Acct. Number, account name or any name part.
+     * Match every word of the search against Savings Number, account name or any name part.
      *
      * @param  Builder<Member>  $query
      */

@@ -41,6 +41,7 @@ class ReportService
         'segment_D' => ['label' => 'Diamond members', 'group' => 'Members by segment', 'date' => 'Approval date'],
         'segment_G' => ['label' => 'Gold members', 'group' => 'Members by segment', 'date' => 'Approval date'],
         'segment_S' => ['label' => 'Silver members', 'group' => 'Members by segment', 'date' => 'Approval date'],
+        'segment_R' => ['label' => 'Regular members', 'group' => 'Members by segment', 'date' => 'Approval date'],
         'branch_summary' => ['label' => 'Branch summary', 'group' => 'Monitoring', 'date' => null],
         'effectivity' => ['label' => '180-day effectivity', 'group' => 'Monitoring', 'date' => 'Effectivity date'],
         'upgrades' => ['label' => '90-day upgrade eligibility', 'group' => 'Monitoring', 'date' => 'Upgrade request date'],
@@ -214,7 +215,7 @@ class ReportService
         $count = (clone $query)->count();
 
         return [
-            'headings' => ['Acct. Number', 'Account Name', 'Branch', 'Segment', 'Category', 'Status', 'Savings Balance', 'Application Date', 'Approval Date', 'Effectivity Date', 'Last Activity', 'Remarks'],
+            'headings' => ['Savings Number', 'Account Name', 'Branch', 'Segment', 'Category', 'Status', 'Savings Balance', 'Application Date', 'Approval Date', 'Effectivity Date', 'Last Activity', 'Remarks'],
             'rows' => (function () use ($query) {
                 foreach ($query->lazy(500) as $member) {
                     yield [
@@ -282,7 +283,7 @@ class ReportService
             ->orderBy('approval_date');
 
         return [
-            'headings' => ['Acct. Number', 'Account Name', 'Branch', 'Category', 'Approval Date', 'Effectivity Date', 'Days Remaining'],
+            'headings' => ['Savings Number', 'Account Name', 'Branch', 'Category', 'Approval Date', 'Effectivity Date', 'Days Remaining'],
             'rows' => (function () use ($query) {
                 foreach ($query->lazy(500) as $member) {
                     yield [
@@ -308,7 +309,7 @@ class ReportService
         $min60 = $this->policy->decimal('min_balance_60k');
 
         return [
-            'headings' => ['Acct. Number', 'Account Name', 'Branch', 'Request Date', 'Eligible Date', 'Upgrade Status', 'Savings Balance', 'Meets '.Member::higherCategoryLabel().' Balance'],
+            'headings' => ['Savings Number', 'Account Name', 'Branch', 'Request Date', 'Eligible Date', 'Upgrade Status', 'Savings Balance', 'Meets '.Member::higherCategoryLabel().' Balance'],
             'rows' => (function () use ($query, $min60) {
                 foreach ($query->lazy(500) as $member) {
                     yield [
@@ -337,7 +338,7 @@ class ReportService
             ->orderBy('deadline');
 
         return [
-            'headings' => ['Acct. Number', 'Account Name', 'Branch', 'Category', 'Required', 'Balance at Notice', 'Shortfall', 'Notice Date', 'Deadline', 'Status', 'Resolved'],
+            'headings' => ['Savings Number', 'Account Name', 'Branch', 'Category', 'Required', 'Balance at Notice', 'Shortfall', 'Notice Date', 'Deadline', 'Status', 'Resolved'],
             'rows' => (function () use ($query) {
                 foreach ($query->lazy(500) as $notice) {
                     yield [
@@ -372,7 +373,7 @@ class ReportService
             ->orderBy('changed_at');
 
         return [
-            'headings' => ['Date', 'Acct. Number', 'Member', 'Branch', 'Field', 'From', 'To', 'Reason', 'Source', 'By'],
+            'headings' => ['Date', 'Savings Number', 'Member', 'Branch', 'Field', 'From', 'To', 'Reason', 'Source', 'By'],
             'rows' => (function () use ($query) {
                 foreach ($query->lazy(500) as $history) {
                     yield [

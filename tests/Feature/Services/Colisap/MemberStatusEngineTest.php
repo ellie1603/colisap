@@ -58,11 +58,14 @@ class MemberStatusEngineTest extends TestCase
         $this->assertStringContainsString('Policy III.1', $member->histories()->where('field', 'status')->first()->reason);
     }
 
-    public function test_member_without_approval_date_stays_waiting(): void
+    public function test_member_without_approval_date_has_no_waiting_period(): void
     {
-        $member = Member::factory()->create(['approval_date' => null, 'status' => 'active']);
+        $member = Member::factory()->waiting()->create(['approval_date' => null]);
 
-        $this->assertSame('waiting', $this->evaluate($member)->status);
+        $member = $this->evaluate($member);
+
+        $this->assertSame('active', $member->status);
+        $this->assertSame('No approval date — no waiting period', $member->histories()->where('field', 'status')->first()->reason);
     }
 
     public function test_masterlist_dormancy_flag_makes_effective_member_dormant(): void

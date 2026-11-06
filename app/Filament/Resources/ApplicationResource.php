@@ -18,6 +18,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 
 /**
  * Member transactions — the CRS Officer's module: add a new or an already-active member, upgrade a member to the
@@ -56,16 +57,17 @@ class ApplicationResource extends Resource
     {
         $policy = app(PolicySettings::class);
 
-        // New and active members are typed in; an upgrade or a re-application names an existing member by Acct. Number.
+        // New and active members are typed in; an upgrade or a re-application names an existing member by Savings Number.
         $isNewPerson = fn (Forms\Get $get): bool => in_array($get('type'), Application::FOR_NEW_PEOPLE, true);
         $isNewMember = fn (Forms\Get $get): bool => $get('type') === 'new';
 
         // Identity can be corrected while a request is pending and has no member record behind it.
         $isLocked = fn (?Application $record): bool => $record !== null && ($record->status !== 'pending' || $record->member_id !== null);
 
+        // Laid out like the old enrolling screen: Account Information, then Personal Information.
         return $form
             ->schema([
-                Forms\Components\Section::make('Transaction')
+                Forms\Components\Section::make('Account Information')
                     ->description('Choose what you are filing. New members are added to Members, and upgrades take effect, when the Administrator approves; re-applications go to the Branch Manager of the member\'s branch.')
                     ->columns(['default' => 1, 'sm' => 2, 'lg' => 3])
                     ->schema([
@@ -102,22 +104,26 @@ class ApplicationResource extends Resource
                             ->live()
                             ->afterStateUpdated(function (mixed $state, Forms\Set $set): void {
                                 foreach (BmpcMember::query()->find($state)?->transactionDetails() ?? [] as $field => $value) {
-                                    $set($field, $value);
+                                    // A blank on the BMPC list keeps the default (e.g. Account Type "Regular").
+                                    if ($value !== null) {
+                                        $set($field, $value);
+                                    }
                                 }
                             })
                             ->dehydrated(false)
                             ->visible(fn (Forms\Get $get, string $operation): bool => $operation === 'create' && $isNewPerson($get) && (Auth::user()?->can('bmpc_members.view') ?? false))
-                            ->columnSpanFull(),
+                            ->columnSpan(['sm' => 2]),
                         Forms\Components\TextInput::make('account_no')
-                            ->label('Acct. Number')
+                            ->label('Savings Number')
                             ->required()
                             ->maxLength(30)
                             ->regex('/^[0-9A-Za-z\-]+$/')
                             ->disabled($isLocked)
+                            ->live(onBlur: true)
                             ->dehydrateStateUsing(fn (?string $state) => $state === null ? null : trim($state))
                             ->helperText(fn (Forms\Get $get) => $isNewPerson($get)
                                 ? 'Savings account number — the member\'s unique ID. Leading zeros are kept.'
-                                : 'The Acct. Number of the member.')
+                                : 'The Savings Number of the member.')
                             ->rule(fn (Forms\Get $get, string $operation): Closure => function (string $attribute, mixed $value, Closure $fail) use ($get, $operation): void {
                                 // No double requests: checked when one is filed, see Application::filingProblem().
                                 if ($operation === 'create' && ($problem = static::filingProblemFor((string) $get('type'), (string) $value))) {
@@ -128,20 +134,52 @@ class ApplicationResource extends Resource
                             ->label('Member')
                             ->content(fn (?Application $record) => $record?->applicantName().' · '.($record?->applicantBranchName() ?? 'No branch'))
                             ->visible(fn (Forms\Get $get, ?Application $record) => $record?->member_id !== null && ! $isNewPerson($get)),
-                        Forms\Components\TextInput::make('last_name')
-                            ->required($isNewPerson)
+                        Forms\Components\Placeholder::make('account_name_display')
+                            ->label('Account Name')
+                            ->content(fn (Forms\Get $get): string => filled($get('last_name'))
+                                ? Str::upper(trim($get('last_name').', '.$get('first_name').' '.$get('middle_name')))
+                                : '—')
+                            ->visible($isNewPerson),
+                        Forms\Components\Placeholder::make('account_status_display')
+                            ->label('Account Status')
+                            ->content(function (Forms\Get $get): string {
+                                $bmpcMember = filled($get('account_no')) ? BmpcMember::query()->where('savings_no', trim((string) $get('account_no')))->first() : null;
+
+                                return match (true) {
+                                    $bmpcMember === null => 'Not on the BMPC member list',
+                                    $bmpcMember->last_transaction_date === null => 'No transaction date on the BMPC list',
+                                    default => $bmpcMember->accountStatus().' — last transaction '.$bmpcMember->last_transaction_date->toFormattedDateString(),
+                                };
+                            }),
+                        Forms\Components\Select::make('category')
+                            ->label('COLISAP Product')
+                            ->options(Member::categoryOptions())
+                            ->default(Member::BASIC_CATEGORY)
+                            ->selectablePlaceholder(false)
+                            ->required(fn (Forms\Get $get) => $get('type') !== 'upgrade')
+                            ->visible(fn (Forms\Get $get) => $get('type') !== 'upgrade')
+                            ->live(),
+                        Forms\Components\Select::make('segment')
+                            ->label('Account Type')
+                            ->options(Member::SEGMENTS)
+                            ->default('R')
+                            ->helperText('The member\'s segmentation.')
                             ->visible($isNewPerson)
-                            ->disabled($isLocked)
-                            ->maxLength(255),
-                        Forms\Components\TextInput::make('first_name')
-                            ->required($isNewPerson)
-                            ->visible($isNewPerson)
-                            ->disabled($isLocked)
-                            ->maxLength(255),
-                        Forms\Components\TextInput::make('middle_name')
-                            ->visible($isNewPerson)
-                            ->disabled($isLocked)
-                            ->maxLength(255),
+                            ->disabled($isLocked),
+                        Forms\Components\DatePicker::make('application_date')
+                            ->label(fn (Forms\Get $get) => $get('type') === 'upgrade' ? 'Date of upgrade request' : 'Date of enrollment')
+                            ->helperText(fn (Forms\Get $get) => $get('type') === 'upgrade' ? 'The upgrade waiting period counts from it.' : null)
+                            ->default(now())->maxDate(now())->required(),
+                        Forms\Components\Placeholder::make('waiting_period_display')
+                            ->label('Waiting period')
+                            ->content(fn (Forms\Get $get): string => ($get('type') === 'upgrade' ? $policy->int('upgrade_wait_days') : $policy->int('effectivity_days')).' days'),
+                        Forms\Components\DatePicker::make('member_since')
+                            ->label('Original approval date')
+                            ->helperText('When they were approved in COLISAP. Their waiting period counts from this date.')
+                            ->maxDate(now())
+                            ->required(fn (Forms\Get $get) => $get('type') === 'active')
+                            ->visible(fn (Forms\Get $get) => $get('type') === 'active')
+                            ->disabled($isLocked),
                         Forms\Components\Select::make('branch_id')
                             ->label('Branch')
                             ->options(fn () => Branch::options())
@@ -150,10 +188,61 @@ class ApplicationResource extends Resource
                             ->required($isNewPerson)
                             ->visible($isNewPerson)
                             ->disabled($isLocked),
-                        Forms\Components\DatePicker::make('birthdate')
-                            ->maxDate(now())
+                        Forms\Components\TextInput::make('savings_balance')
+                            ->label('Savings balance')
+                            ->numeric()
+                            ->minValue(0)
+                            ->prefix('₱')
                             ->required($isNewPerson)
                             ->visible($isNewPerson)
+                            ->disabled($isLocked)
+                            ->helperText(fn (Forms\Get $get) => $isNewMember($get)
+                                ? 'Must be at least ₱'.number_format($policy->minimumBalanceFor($get('category')), 2).' for the '.Member::categoryLabel($get('category')).' category. Recorded as the member\'s opening balance on approval.'
+                                : 'Their savings today. If it is below the maintaining balance, the usual replenishment notice follows.')
+                            ->rule(fn (Forms\Get $get): Closure => function (string $attribute, mixed $value, Closure $fail) use ($get, $policy, $isNewMember): void {
+                                $minimum = $policy->minimumBalanceFor($get('category'));
+
+                                if ($isNewMember($get) && $value !== null && $value !== '' && (float) $value < $minimum) {
+                                    $fail('Below the ₱'.number_format($minimum, 2).' maintaining balance for the '.Member::categoryLabel($get('category')).' category, so the applicant cannot apply for COLISAP yet.');
+                                }
+                            }),
+                        Forms\Components\TextInput::make('or_number')
+                            ->label('OR number')
+                            ->helperText(fn () => 'Official receipt number of the ₱'.number_format($policy->decimal('reapplication_fee'), 2).' re-application fee.')
+                            ->required(fn (Forms\Get $get) => $get('type') === 'reapplication')
+                            ->visible(fn (Forms\Get $get) => $get('type') === 'reapplication')
+                            ->maxLength(50)
+                            ->regex('/^[0-9A-Za-z\-\/ ]+$/'),
+                        Forms\Components\Placeholder::make('status_display')->label('Status')
+                            ->content(fn (?Application $record) => Application::STATUSES[$record?->status ?? 'pending']),
+                        Forms\Components\Textarea::make('remarks')->rows(2)->columnSpanFull(),
+                    ]),
+                Forms\Components\Section::make('Personal Information')
+                    ->columns(['default' => 1, 'sm' => 2, 'lg' => 3])
+                    ->visible($isNewPerson)
+                    ->schema([
+                        Forms\Components\TextInput::make('cif_key')
+                            ->label('CIF Key')
+                            ->maxLength(30)
+                            ->disabled($isLocked),
+                        Forms\Components\TextInput::make('last_name')
+                            ->required($isNewPerson)
+                            ->disabled($isLocked)
+                            ->live(onBlur: true)
+                            ->maxLength(255),
+                        Forms\Components\TextInput::make('first_name')
+                            ->required($isNewPerson)
+                            ->disabled($isLocked)
+                            ->live(onBlur: true)
+                            ->maxLength(255),
+                        Forms\Components\TextInput::make('middle_name')
+                            ->disabled($isLocked)
+                            ->live(onBlur: true)
+                            ->maxLength(255),
+                        Forms\Components\DatePicker::make('birthdate')
+                            ->label('Date of birth')
+                            ->maxDate(now())
+                            ->required($isNewPerson)
                             ->disabled($isLocked)
                             ->live(onBlur: true)
                             ->helperText(function (?string $state) {
@@ -174,63 +263,40 @@ class ApplicationResource extends Resource
                                     $fail('Over the maximum entry age of '.intdiv($limit, 12).' years and '.($limit % 12).' months, so the applicant cannot apply for COLISAP.');
                                 }
                             }),
+                        Forms\Components\Select::make('civil_status')
+                            ->options(Member::CIVIL_STATUSES)
+                            ->disabled($isLocked),
+                        Forms\Components\Select::make('sex')
+                            ->options(Member::SEXES)
+                            ->disabled($isLocked),
                         Forms\Components\TextInput::make('contact_number')
                             ->label('Contact number')
                             ->tel()
                             ->maxLength(50)
-                            ->visible($isNewPerson)
-                            ->disabled($isLocked)
-                            ->helperText('Optional.'),
-                        Forms\Components\TextInput::make('savings_balance')
-                            ->label('Savings balance')
-                            ->numeric()
-                            ->minValue(0)
-                            ->prefix('₱')
-                            ->required($isNewPerson)
-                            ->visible($isNewPerson)
-                            ->disabled($isLocked)
-                            ->helperText(fn (Forms\Get $get) => $isNewMember($get)
-                                ? 'Must be at least ₱'.number_format($policy->minimumBalanceFor($get('category')), 2).' for the '.Member::categoryLabel($get('category')).' category. Recorded as the member\'s opening balance on approval.'
-                                : 'Their savings today. If it is below the maintaining balance, the usual replenishment notice follows.')
-                            ->rule(fn (Forms\Get $get): Closure => function (string $attribute, mixed $value, Closure $fail) use ($get, $policy, $isNewMember): void {
-                                $minimum = $policy->minimumBalanceFor($get('category'));
-
-                                if ($isNewMember($get) && $value !== null && $value !== '' && (float) $value < $minimum) {
-                                    $fail('Below the ₱'.number_format($minimum, 2).' maintaining balance for the '.Member::categoryLabel($get('category')).' category, so the applicant cannot apply for COLISAP yet.');
-                                }
-                            }),
-                    ]),
-                Forms\Components\Section::make('Details')
-                    ->columns(['default' => 1, 'sm' => 2, 'lg' => 3])
-                    ->schema([
-                        Forms\Components\DatePicker::make('application_date')
-                            ->label('Transaction date')
-                            ->helperText(fn (Forms\Get $get) => $get('type') === 'upgrade' ? 'The upgrade request date: the upgrade waiting period counts from it.' : null)
-                            ->default(now())->maxDate(now())->required(),
-                        Forms\Components\DatePicker::make('member_since')
-                            ->label('Original approval date')
-                            ->helperText('When they were approved in COLISAP. Their waiting period counts from this date.')
-                            ->maxDate(now())
-                            ->required(fn (Forms\Get $get) => $get('type') === 'active')
-                            ->visible(fn (Forms\Get $get) => $get('type') === 'active')
                             ->disabled($isLocked),
-                        Forms\Components\Select::make('category')
-                            ->label('Benefit category')
-                            ->options(Member::categoryOptions())
-                            ->default(Member::BASIC_CATEGORY)
-                            ->required(fn (Forms\Get $get) => $get('type') !== 'upgrade')
-                            ->visible(fn (Forms\Get $get) => $get('type') !== 'upgrade')
-                            ->live(),
-                        Forms\Components\TextInput::make('or_number')
-                            ->label('OR number')
-                            ->helperText(fn () => 'Official receipt number of the ₱'.number_format($policy->decimal('reapplication_fee'), 2).' re-application fee.')
-                            ->required(fn (Forms\Get $get) => $get('type') === 'reapplication')
-                            ->visible(fn (Forms\Get $get) => $get('type') === 'reapplication')
-                            ->maxLength(50)
-                            ->regex('/^[0-9A-Za-z\-\/ ]+$/'),
-                        Forms\Components\Placeholder::make('status_display')->label('Status')
-                            ->content(fn (?Application $record) => Application::STATUSES[$record?->status ?? 'pending']),
-                        Forms\Components\Textarea::make('remarks')->rows(2)->columnSpanFull(),
+                        Forms\Components\TextInput::make('occupation')
+                            ->maxLength(255)
+                            ->disabled($isLocked),
+                        Forms\Components\Textarea::make('address')
+                            ->rows(2)
+                            ->maxLength(1000)
+                            ->disabled($isLocked),
+                        Forms\Components\Textarea::make('office_address')
+                            ->rows(2)
+                            ->maxLength(1000)
+                            ->disabled($isLocked),
+                        Forms\Components\TextInput::make('employer')
+                            ->maxLength(255)
+                            ->disabled($isLocked),
+                        Forms\Components\TextInput::make('religion')
+                            ->maxLength(100)
+                            ->disabled($isLocked),
+                        Forms\Components\TextInput::make('dependents')
+                            ->label('No. of dependents')
+                            ->integer()
+                            ->minValue(0)
+                            ->maxValue(30)
+                            ->disabled($isLocked),
                     ]),
             ]);
     }
@@ -239,10 +305,10 @@ class ApplicationResource extends Resource
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query) => $query->with(['member.branch', 'branch']))
-            ->searchPlaceholder('Search name or Acct. Number')
+            ->searchPlaceholder('Search name or Savings Number')
             ->columns([
                 Tables\Columns\TextColumn::make('application_date')->label('Transaction date')->date()->sortable(),
-                Tables\Columns\TextColumn::make('applicant_account_no')->label('Acct. Number')->fontFamily('mono')
+                Tables\Columns\TextColumn::make('applicant_account_no')->label('Savings Number')->fontFamily('mono')
                     ->state(fn (Application $record) => $record->applicantAccountNo()),
                 Tables\Columns\TextColumn::make('applicant_name')->label('Applicant')->wrap()
                     ->state(fn (Application $record) => $record->applicantName())
@@ -351,6 +417,7 @@ class ApplicationResource extends Resource
             'branch_id' => $member->branch_id,
             'birthdate' => $member->birthdate?->toDateString(),
             'contact_number' => $member->contact_number,
+            ...$member->only(Application::ENROLLMENT_DETAILS),
             'savings_balance' => $data['savings_balance'] ?? $member->savings_balance,
         ];
     }

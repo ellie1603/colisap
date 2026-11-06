@@ -39,7 +39,7 @@
         <x-filament::section>
             <x-slot name="heading">Upload the masterlist</x-slot>
             <x-slot name="description">
-                Members are matched by Acct. Number: existing accounts are updated, new accounts are added. Computed Excel columns (NEW STATUS, # of Days, upload flags) and values such as #N/A are ignored — the system recalculates statuses from policy.
+                Members are matched by Savings Number: existing accounts are updated, new accounts are added. Computed Excel columns (NEW STATUS, # of Days, upload flags) and values such as #N/A are ignored — the system recalculates statuses from policy.
             </x-slot>
 
             <form wire:submit="analyze" class="colisap-stack">
@@ -92,7 +92,7 @@
                     <div class="colisap-progress"><div class="colisap-progress__bar" style="width: {{ $percent }}%"></div></div>
                     <p class="colisap-muted">
                         {{ $done }} of {{ $included->count() }} sheets checked · {{ number_format($included->sum('staged_rows')) }} rows read.
-                        Checking Acct. Numbers, dates, categories, segmentation and duplicates.
+                        Checking Savings Numbers, dates, categories, segmentation and duplicates.
                     </p>
                 </div>
                 <div class="colisap-actions">
@@ -130,7 +130,7 @@
                                             @if ($sheet['header_row'])
                                                 Header on row {{ $sheet['header_row'] }}@if ($sheet['staged'] ?? false) · {{ number_format($sheet['staged_rows'] ?? 0) }} member rows read @endif
                                             @else
-                                                No header row with Acct. Number / Account Name found — sheet skipped
+                                                No header row with Savings Number / Account Name found — sheet skipped
                                             @endif
                                         </span>
                                     </span>
@@ -156,7 +156,7 @@
 
                             @if ($sheet['header_row'] && $isContactList)
                                 <p class="colisap-muted">
-                                    This sheet has only the Acct. Number, name and mobile number, so it updates the mobile number of members already in the system, matched by Acct. Number.
+                                    This sheet has only the Savings Number, name and mobile number, so it updates the mobile number of members already in the system, matched by Savings Number.
                                     Names, branch, status, category and savings are not changed, and no new members are added.
                                 </p>
                             @endif
@@ -255,7 +255,7 @@
             <x-filament::section icon="heroicon-o-no-symbol" icon-color="danger">
                 <x-slot name="heading">Import blocked — this file has {{ number_format($batch->duplicate_rows) }} duplicate(s)</x-slot>
                 <x-slot name="description">
-                    The file lists the same Acct. Number more than once, so nothing has been imported.
+                    The file lists the same Savings Number more than once, so nothing has been imported.
                     Correct the file in Excel and upload it again, or tick the duplicate rows in the table below and choose "Delete selected".
                     Each duplicate says which sheet and row it repeats; the issues report lists them all.
                 </x-slot>

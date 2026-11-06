@@ -5,6 +5,7 @@ namespace App\Filament\Resources\MemberResource\Pages;
 use App\Filament\Concerns\DetectsConcurrentEdits;
 use App\Filament\Concerns\ReturnsToPreviousPage;
 use App\Filament\Resources\MemberResource;
+use App\Services\Colisap\BmpcMemberLink;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Support\Carbon;
@@ -52,13 +53,21 @@ class EditMember extends EditRecord
     protected function afterSave(): void
     {
         $this->rememberCurrentVersion();
+        $identityChanged = $this->record->wasChanged(['account_no', 'account_name']);
 
         if (blank($this->record->account_name)) {
             $this->record->updateQuietly(['account_name' => $this->record->composeAccountName()]);
         }
 
         $this->record->refreshStatus();
-        $this->refreshFormData(['status', 'activated_at', 'account_name']);
+
+        // A corrected Savings Number or name may now match the BMPC member list.
+        if ($identityChanged && ($bmpcMember = app(BmpcMemberLink::class)->matchFor($this->record))) {
+            app(BmpcMemberLink::class)->apply($this->record, $bmpcMember);
+            $this->rememberCurrentVersion();
+        }
+
+        $this->refreshFormData(['status', 'activated_at', 'account_name', 'cif_key', 'birthdate', 'contact_number', 'segment', 'savings_account_status']);
     }
 
     /**

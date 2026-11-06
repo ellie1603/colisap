@@ -51,6 +51,21 @@ class BmpcMembersTest extends TestCase
         ]);
     }
 
+    public function test_importing_the_list_updates_the_colisap_member_with_the_same_savings_number_and_name(): void
+    {
+        $this->actingAsRole(Permissions::ADMIN);
+        $member = Member::factory()->create(['account_no' => '00101959720', 'account_name' => 'DELA CRUZ, JUAN', 'cif_key' => null, 'savings_balance' => 5000]);
+        $namesake = Member::factory()->create(['account_no' => '00101959721', 'account_name' => 'SANTOS, MARIA', 'cif_key' => null]);
+
+        app(BmpcMemberImportService::class)->import($this->memberList([
+            ['Savings Number' => '00101959720', 'CIF Key' => '0000006392', 'Account Name' => 'DELA CRUZ, JUAN A.', 'Contact Number' => '9171234567', 'Savings Balance' => 7300.5],
+            ['Savings Number' => '00101959721', 'CIF Key' => '0000006393', 'Account Name' => 'REYES, PEDRO'],
+        ]));
+
+        $this->assertSame(['0000006392', '09171234567', '7300.50'], [$member->refresh()->cif_key, $member->contact_number, $member->savings_balance]);
+        $this->assertNull($namesake->refresh()->cif_key, 'Same savings number but another name: not the same person.');
+    }
+
     public function test_the_import_keeps_the_twelve_details_and_skips_rows_without_a_cif_key_or_account_name(): void
     {
         $this->actingAsRole(Permissions::ADMIN);
@@ -329,6 +344,35 @@ class BmpcMembersTest extends TestCase
         $this->assertSame($batch->id, BmpcMember::where('cif_key', '0000006392')->value('import_batch_id'), 'Import History knows which members this upload added.');
     }
 
+    public function test_several_member_list_files_are_imported_in_one_go(): void
+    {
+        Storage::fake('local');
+        $this->actingAsRole(Permissions::ADMIN);
+        $upload = fn (string $name, array $member) => UploadedFile::fake()
+            ->createWithContent($name, file_get_contents($this->memberList([$member])))
+            ->mimeType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+
+        $page = Livewire::test(ListBmpcMembers::class)
+            ->callAction('import', data: ['file' => [
+                $upload('009 KALIBO-SD 2026.xlsx', ['Savings Number' => '00901000001', 'CIF Key' => '0090000000001', 'Account Name' => 'REYES, PEDRO']),
+                $upload('008 MOLO-SD 2026.xlsx', ['Savings Number' => '00801000001', 'CIF Key' => '0080000000001', 'Account Name' => 'SANTOS, MARIA']),
+            ]])
+            ->assertHasNoActionErrors()
+            ->assertActionMounted('mapColumns')
+            ->callMountedAction()
+            ->assertHasNoActionErrors()
+            ->assertSet('importSheetCount', 2);
+
+        while ($page->get('importFile') !== null) {
+            $page->call('importNextSheet');
+        }
+
+        $page->assertNotified('2 added, 0 updated');
+        $this->assertSame(['0080000000001', '0090000000001'], BmpcMember::orderBy('cif_key')->pluck('cif_key')->all());
+        $this->assertSame([], Storage::disk('local')->allFiles('bmpc-member-imports'), 'None of the uploaded files is kept.');
+        $this->assertSame('009 KALIBO-SD 2026.xlsx, 008 MOLO-SD 2026.xlsx', ImportBatch::sole()->file_name);
+    }
+
     public function test_staff_choose_which_column_each_detail_comes_from_before_the_import(): void
     {
         Storage::fake('local');
@@ -448,8 +492,9 @@ class BmpcMembersTest extends TestCase
             ->setActionData(['type' => 'new'])
             ->setActionData(['bmpc_member_id' => $bmpcMember->getKey()])
             ->assertActionDataSet([
-                'account_no' => '00101959720', 'last_name' => 'Dela Cruz', 'first_name' => 'Juan', 'middle_name' => 'A.',
+                'account_no' => '00101959720', 'cif_key' => '0000006392', 'last_name' => 'Dela Cruz', 'first_name' => 'Juan', 'middle_name' => 'A.',
                 'branch_id' => $this->branchId('Barbaza'), 'birthdate' => '1980-03-15', 'contact_number' => '09171234567',
+                'segment' => 'R',
             ])
             ->setActionData(['application_date' => now()->toDateString(), 'category' => '40000'])
             ->callMountedAction()

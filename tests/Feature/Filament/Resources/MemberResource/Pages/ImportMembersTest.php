@@ -85,6 +85,44 @@ class ImportMembersTest extends TestCase
         $this->assertSame('President Roxas', Member::where('account_no', '00101959722')->first()->branch->name);
     }
 
+    public function test_several_workbooks_are_imported_together_and_checked_for_duplicates_across_files(): void
+    {
+        Storage::fake('local');
+        $this->actingAsRole(Permissions::ADMIN);
+        $header = ['Acct. Number', 'Account Name', 'Segmentation', 'Category', 'NEW Date of Approval', 'Savings Balance'];
+        $workbook = function (string $name, array $sheets): UploadedFile {
+            $path = $this->writeMasterlistWorkbook(tempnam(sys_get_temp_dir(), 'masterlist').'.xlsx', $sheets);
+
+            return UploadedFile::fake()->createWithContent($name, file_get_contents($path))
+                ->mimeType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        };
+
+        $page = Livewire::test(ImportMembers::class)
+            ->set('upload.file', [
+                $workbook('barbaza.xlsx', ['Barbaza' => [$header, ['00101959720', 'DELA CRUZ, JUAN A.', 'G', 'COLISAP40000', '6/3/1998', 5000]]]),
+                $workbook('culasi.xlsx', ['Culasi' => [
+                    $header,
+                    ['00101959730', 'REYES, PEDRO', 'R', 'COLISAP40000', '', 3000],
+                    ['00101959720', 'DELA CRUZ, JUAN A.', 'G', 'COLISAP40000', '6/3/1998', 5000],
+                ]]),
+            ])
+            ->call('analyze');
+
+        $batch = ImportBatch::sole();
+        $this->assertSame(['barbaza.xlsx · Barbaza', 'culasi.xlsx · Culasi'], array_column($batch->sheets, 'name'));
+        $this->assertSame(['Barbaza', 'Culasi'], array_column($batch->sheets, 'branch_name'));
+        $this->assertSame('barbaza.xlsx, culasi.xlsx', $batch->file_name);
+
+        $page->call('validateMapping');
+
+        while ($page->get('staging')) {
+            $page->call('stageNext');
+        }
+
+        $this->assertSame(['staged', 2, 1], [$batch->refresh()->status, $batch->new_rows, $batch->duplicate_rows]);
+        $this->assertStringContainsString('barbaza.xlsx · Barbaza row 2', $batch->rows()->where('action', 'duplicate')->sole()->errors[0]);
+    }
+
     public function test_selected_rows_can_be_deleted_from_an_import_before_it_is_written(): void
     {
         Storage::fake('local');
@@ -178,7 +216,7 @@ class ImportMembersTest extends TestCase
             ->assertNotified('Saved, but the row still has problems');
 
         $this->assertSame('invalid', $invalid->refresh()->action);
-        $this->assertSame(['Duplicate Acct. Number — already listed in Barbaza row 3'], $invalid->errors);
+        $this->assertSame(['Duplicate Savings Number — already listed in Barbaza row 3'], $invalid->errors);
     }
 
     public function test_a_file_with_a_duplicate_account_number_is_blocked_until_the_duplicate_row_is_deleted(): void

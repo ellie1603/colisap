@@ -5,6 +5,7 @@ namespace App\Services\Masterlist;
 use App\Models\BmpcMember;
 use App\Models\Branch;
 use App\Models\ImportBatch;
+use App\Services\Colisap\BmpcMemberLink;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -77,6 +78,7 @@ class BmpcMemberImportService
     public function __construct(
         private WorkbookParser $parser,
         private NameParser $nameParser,
+        private BmpcMemberLink $bmpcLink,
     ) {}
 
     /**
@@ -203,7 +205,7 @@ class BmpcMemberImportService
             // The savings system's export calls it "LastOTCDate" (last over-the-counter transaction).
             'last_transaction_date' => $this->parser->lastTransactionColumn($headers) ?? $firstColumn(['lastotcdate', 'lastotc']),
             // The coop list has "Classification" (MIGS / NON-MIGS) before "Segmentation Status" (Diamond, Gold,
-            // Silver): the segmentation is the column that says so.
+            // Silver, Regular): the segmentation is the column that says so.
             'segment' => array_key_first(array_filter($normalized, fn (string $header) => str_contains($header, 'segment'))) ?? $matched('segment'),
             'category' => $matched('category'),
             // A plain "Status" before one the parser only guesses from the word ("Civil Status").
@@ -482,6 +484,9 @@ class BmpcMemberImportService
             ['cif_key'],
             [...self::FIELDS, 'imported_by', 'updated_at'],
         );
+
+        // COLISAP members with these savings numbers (and the same name) take the updated details.
+        $this->bmpcLink->syncSavingsNumbers(array_column($rows, 'savings_no'));
     }
 
     /**

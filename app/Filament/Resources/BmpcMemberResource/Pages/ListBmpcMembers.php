@@ -14,6 +14,7 @@ use Filament\Resources\Pages\ListRecords;
 use Filament\Support\Enums\MaxWidth;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -35,11 +36,18 @@ class ListBmpcMembers extends ListRecords
     private const DIRECTORY = 'bmpc-member-imports';
 
     /**
-     * The uploaded workbook being mapped or imported, relative to the local disk; null when no import is running.
+     * The (first) uploaded workbook being mapped or imported, relative to the local disk; null when no import is running.
      */
     public ?string $importFile = null;
 
     public ?string $importFileName = null;
+
+    /**
+     * Every workbook of this import (several can be uploaded at once), relative to the local disk.
+     *
+     * @var list<string>
+     */
+    public array $importFiles = [];
 
     /**
      * The workbook's sheets while staff choose the columns; empty once the import starts.
@@ -90,8 +98,10 @@ class ListBmpcMembers extends ListRecords
                 ->modalSubmitActionLabel('Next: match columns')
                 ->form([
                     Forms\Components\FileUpload::make('file')
-                        ->label('Member list workbook')
-                        ->helperText('Excel (.xlsx), OpenDocument (.ods) or CSV. Every sheet is read.')
+                        ->label('Member list workbooks')
+                        ->helperText('Excel (.xlsx), OpenDocument (.ods) or CSV. Select one file or several at once (say, one per branch) — every sheet of every file is read.')
+                        ->multiple()
+                        ->maxFiles(30)
                         ->disk(self::DISK)
                         ->directory(self::DIRECTORY)
                         ->storeFileNamesIn('original_name')
@@ -108,27 +118,47 @@ class ListBmpcMembers extends ListRecords
                 ])
                 ->action(function (array $data): void {
                     $service = app(BmpcMemberImportService::class);
-                    $this->deleteAbandonedUploads($data['file']);
+                    $paths = array_values((array) $data['file']);
+                    $names = (array) ($data['original_name'] ?? []);
+                    $nameOf = fn (string $path): string => $names[$path] ?? basename($path);
+                    $this->deleteAbandonedUploads($paths);
+                    $sheets = [];
+                    $filesWithoutList = [];
 
-                    try {
-                        $sheets = $service->mappableSheets(Storage::disk(self::DISK)->path($data['file']));
-                    } catch (Throwable $exception) {
-                        report($exception);
-                        Storage::disk(self::DISK)->delete($data['file']);
-                        Notification::make()->danger()->title('The file could not be read')->body('Check that it is an Excel (.xlsx), OpenDocument or CSV file and try again.')->send();
+                    foreach ($paths as $path) {
+                        try {
+                            $fileSheets = $service->mappableSheets(Storage::disk(self::DISK)->path($path));
+                        } catch (Throwable $exception) {
+                            report($exception);
+                            Storage::disk(self::DISK)->delete($paths);
+                            Notification::make()->danger()->title(count($paths) > 1 ? "{$nameOf($path)} could not be read" : 'The file could not be read')->body('Check that it is an Excel (.xlsx), OpenDocument or CSV file and try again.')->send();
 
-                        return;
+                            return;
+                        }
+
+                        if ($fileSheets === []) {
+                            $filesWithoutList[] = $nameOf($path);
+                        }
+
+                        foreach ($fileSheets as $sheet) {
+                            $sheets[] = [...$sheet, 'file' => $path, 'name' => count($paths) > 1 ? "{$nameOf($path)} · {$sheet['name']}" : $sheet['name']];
+                        }
                     }
 
                     if ($sheets === []) {
-                        Storage::disk(self::DISK)->delete($data['file']);
+                        Storage::disk(self::DISK)->delete($paths);
                         Notification::make()->warning()->title('No member list found')->body('No sheet has a header row with a CIF Key or Account Name column.')->send();
 
                         return;
                     }
 
-                    $this->importFile = $data['file'];
-                    $this->importFileName = $data['original_name'] ?? basename($data['file']);
+                    if ($filesWithoutList !== []) {
+                        Notification::make()->warning()->title('Some files have no member list')->body(implode(', ', $filesWithoutList).' — no sheet has a CIF Key or Account Name column, so they are left out.')->send();
+                    }
+
+                    $this->importFiles = $paths;
+                    $this->importFile = $paths[0];
+                    $this->importFileName = Str::limit(implode(', ', array_map($nameOf, $paths)), 250);
                     $this->mappingSheets = $sheets;
                     $this->replaceMountedAction('mapColumns');
                 }),
@@ -200,12 +230,15 @@ class ListBmpcMembers extends ListRecords
     /**
      * Uploads left behind when the page was closed or reloaded with the Match the columns window open.
      */
-    private function deleteAbandonedUploads(string $currentFile): void
+    /**
+     * @param  list<string>  $currentFiles
+     */
+    private function deleteAbandonedUploads(array $currentFiles): void
     {
         $disk = Storage::disk(self::DISK);
 
         foreach ($disk->files(self::DIRECTORY) as $file) {
-            if ($file !== $currentFile && $disk->lastModified($file) < now()->subDay()->getTimestamp()) {
+            if (! in_array($file, $currentFiles, true) && $disk->lastModified($file) < now()->subDay()->getTimestamp()) {
                 $disk->delete($file);
             }
         }
@@ -234,10 +267,19 @@ class ListBmpcMembers extends ListRecords
             return;
         }
 
-        Storage::disk(self::DISK)->delete($this->importFile);
+        Storage::disk(self::DISK)->delete($this->uploadedFiles());
         $this->importFile = null;
         $this->importFileName = null;
+        $this->importFiles = [];
         $this->mappingSheets = [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function uploadedFiles(): array
+    {
+        return $this->importFiles !== [] ? $this->importFiles : array_values(array_filter([$this->importFile]));
     }
 
     protected function getHeaderWidgets(): array
@@ -261,7 +303,7 @@ class ListBmpcMembers extends ListRecords
             set_time_limit(600);
 
             try {
-                app(BmpcMemberImportService::class)->importSheet(Storage::disk(self::DISK)->path($this->importFile), $sheet, $this->importSummary, $this->importBatchId);
+                app(BmpcMemberImportService::class)->importSheet(Storage::disk(self::DISK)->path($sheet['file'] ?? $this->importFile), $sheet, $this->importSummary, $this->importBatchId);
             } catch (Throwable $exception) {
                 report($exception);
                 $this->finishImport("Sheet \"{$sheet['name']}\" could not be read.");
@@ -279,7 +321,7 @@ class ListBmpcMembers extends ListRecords
     private function finishImport(?string $errorMessage = null): void
     {
         $summary = $this->importSummary;
-        Storage::disk(self::DISK)->delete($this->importFile);
+        Storage::disk(self::DISK)->delete($this->uploadedFiles());
         Auth::user()?->recordActivity('bmpc_members_imported', 'BMPC Members', $summary);
 
         if ($batch = ImportBatch::find($this->importBatchId)) {
@@ -289,6 +331,7 @@ class ListBmpcMembers extends ListRecords
         $this->importBatchId = null;
         $this->importFile = null;
         $this->importFileName = null;
+        $this->importFiles = [];
         $this->importSheets = [];
         $this->importSheetCount = 0;
         $this->importSummary = [];

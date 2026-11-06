@@ -9,7 +9,7 @@ use Filament\Widgets\Widget;
 
 /**
  * The four cards above the BMPC member list. They count the members the table shows, so a branch filter or a
- * search narrows the cards too. A BMPC member is "in COLISAP" when a participating COLISAP member's Acct. Number
+ * search narrows the cards too. A BMPC member is "in COLISAP" when a participating COLISAP member's Savings Number
  * is their savings number.
  */
 class BmpcMemberStats extends Widget

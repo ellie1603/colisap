@@ -209,9 +209,9 @@ class ViewMember extends ViewRecord
                     ->modalSubmitActionLabel('Erase permanently')
                     ->form(fn () => [
                         Forms\Components\Textarea::make('reason')->label('Reason / request reference')->required()->rows(2)->maxLength(500),
-                        Forms\Components\TextInput::make('confirm_account_no')->label('Type the Acct. Number to confirm')
+                        Forms\Components\TextInput::make('confirm_account_no')->label('Type the Savings Number to confirm')
                             ->required()->in([$this->record->account_no])
-                            ->validationMessages(['in' => 'That is not this member\'s Acct. Number.']),
+                            ->validationMessages(['in' => 'That is not this member\'s Savings Number.']),
                     ])
                     ->action(function (array $data) {
                         app(MemberPersonalData::class)->erase($this->record, $data['reason']);

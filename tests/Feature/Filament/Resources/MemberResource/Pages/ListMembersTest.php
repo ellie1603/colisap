@@ -45,8 +45,9 @@ class ListMembersTest extends TestCase
     {
         $this->travelTo('2026-06-30 08:00:00');
         Member::factory()->segment('G')->category60000()->create([
-            'account_no' => '00101000001', 'account_name' => 'DELA CRUZ, JUAN', 'savings_balance' => 2500,
+            'account_no' => '00101000001', 'cif_key' => '0010000006392', 'account_name' => 'DELA CRUZ, JUAN', 'savings_balance' => 2500,
             'branch_id' => Branch::where('name', 'Kalibo')->value('id'), 'approval_date' => '2024-01-15', 'application_date' => null,
+            'birthdate' => '1980-02-03', 'contact_number' => '09171234567', 'last_activity_date' => '2026-06-01',
         ]);
         Member::factory()->create(['account_no' => '00101000002', 'account_name' => 'ABAD, ANA', 'branch_id' => Branch::where('name', 'Barbaza')->value('id')]);
         $this->actingAsRole(Permissions::ADMIN);
@@ -61,9 +62,9 @@ class ListMembersTest extends TestCase
 
         $this->assertSame(['BARBAZA MULTI-PURPOSE COOPERATIVE'], $lines[0]);
         $this->assertSame(['MEMBERSHIP MASTERLIST'], $lines[2]);
-        $this->assertSame(['Acct. Number', 'Account Name', 'Branch', 'Segmentation', 'Category (40,000 / 60,000)', 'Application Date', 'Status', 'Saving Balance'], $lines[4]);
+        $this->assertSame(['Savings Number', 'CIF Key', 'Account Name', 'Branch', 'Birthdate', 'Contact Number', 'Savings Balance', 'Last Transaction Date', 'Segmentation', 'Category (40,000 / 60,000)', 'Status', 'Remarks'], $lines[4]);
         $this->assertSame(['00101000002', '00101000001'], [$lines[5][0], $lines[6][0]], 'Sorted by branch order (Barbaza before Kalibo).');
-        $this->assertSame(['00101000001', 'DELA CRUZ, JUAN', 'Kalibo', 'Gold', '60000', '2024-01-15', 'Active', '2500'], $lines[6]);
+        $this->assertSame(['00101000001', '0010000006392', 'DELA CRUZ, JUAN', 'Kalibo', '1980-02-03', '09171234567', '2500', '2026-06-01', 'Gold', '60000', 'Active', ''], $lines[6]);
     }
 
     public function test_status_tabs_and_segment_filter_narrow_the_list(): void
@@ -169,12 +170,24 @@ class ListMembersTest extends TestCase
         $this->assertSame('2026-01-15', $fromBmpcList->lastTransactionDate()->toDateString());
         $this->assertSame([false, true, null], [$recorded->hasDormantTransactions(), $fromBmpcList->hasDormantTransactions(), $unknown->hasDormantTransactions()]);
         $this->assertSame('active', $fromBmpcList->fresh()->status, 'Only shown: the status is not changed.');
+    }
 
-        Livewire::test(ListMembers::class)
-            ->loadTable()
-            ->assertTableColumnFormattedStateSet('last_transaction_date', 'Jan 15, 2026', $fromBmpcList)
-            ->sortTable('last_transaction_date', 'desc')
-            ->assertCanSeeTableRecords([$recorded, $fromBmpcList, $unknown], inOrder: true);
+    public function test_the_list_shows_only_the_everyday_columns_and_finds_members_by_cif_key(): void
+    {
+        $member = Member::factory()->create(['cif_key' => '0010000006392']);
+        $other = Member::factory()->create(['cif_key' => '0010000000001']);
+        $this->actingAsRole(Permissions::ADMIN);
+
+        $component = Livewire::test(ListMembers::class);
+        $this->assertSame(
+            ['account_no', 'account_name', 'branch.name', 'savings_balance', 'category', 'segment', 'status'],
+            array_keys($component->instance()->getTable()->getColumns()),
+        );
+
+        $component->loadTable()
+            ->searchTable('6392')
+            ->assertCanSeeTableRecords([$member])
+            ->assertCanNotSeeTableRecords([$other]);
     }
 
     public function test_export_and_import_actions_follow_permissions(): void

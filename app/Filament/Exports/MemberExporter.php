@@ -10,7 +10,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Streams the (already filtered) member query straight to the browser as XLSX or CSV.
- * Acct. Numbers are written as text so leading zeros survive in Excel.
+ * Savings Numbers are written as text so leading zeros survive in Excel.
  */
 class MemberExporter
 {
@@ -42,7 +42,7 @@ class MemberExporter
         $policy = app(PolicySettings::class);
         $category = 'Category ('.number_format($policy->benefitFor(Member::BASIC_CATEGORY)).' / '.number_format($policy->benefitFor(Member::HIGHER_CATEGORY)).')';
 
-        return ['Acct. Number', 'Account Name', 'Branch', 'Segmentation', $category, 'Application Date', 'Status', 'Saving Balance'];
+        return ['Savings Number', 'CIF Key', 'Account Name', 'Branch', 'Birthdate', 'Contact Number', 'Savings Balance', 'Last Transaction Date', 'Segmentation', $category, 'Status', 'Remarks'];
     }
 
     /**
@@ -52,13 +52,17 @@ class MemberExporter
     {
         return [
             $member->account_no,
+            $member->cif_key,
             $member->account_name,
             $member->branch?->name,
+            $member->birthdate?->toDateString(),
+            $member->contact_number,
+            round((float) $member->savings_balance, 2),
+            $member->lastTransactionDate()?->toDateString(),
             $member->segment ? Member::segmentLabel($member->segment) : null,
             (int) $member->category,
-            ($member->application_date ?? $member->approval_date)?->toDateString(),
             Member::STATUSES[$member->status] ?? $member->status,
-            round((float) $member->savings_balance, 2),
+            $member->accountRemarks() ?? $member->remarks,
         ];
     }
 
@@ -68,7 +72,7 @@ class MemberExporter
     public function headings(): array
     {
         return [
-            'Acct. Number', 'Account Name', 'Last Name', 'First Name', 'Middle Name', 'Suffix', 'Branch',
+            'Savings Number', 'CIF Key', 'Account Name', 'Last Name', 'First Name', 'Middle Name', 'Suffix', 'Branch',
             'Segmentation', 'Category', 'Status', 'Savings Balance', 'Required Balance',
             'Application Date', 'Approval Date', 'Effectivity Date', 'Days Until Effective', 'Upgrade Requested',
             'Last Activity', 'Savings Flag', 'Dormant Since', 'Date of Death', 'Terminated', 'Termination Reason',
@@ -83,6 +87,7 @@ class MemberExporter
     {
         return [
             $member->account_no,
+            $member->cif_key,
             $member->account_name,
             $member->last_name,
             $member->first_name,
@@ -119,7 +124,7 @@ class MemberExporter
     public function download(Builder $query, string $format = 'xlsx', string $layout = 'organized'): StreamedResponse
     {
         if ($layout === 'organized') {
-            $query = $query->with('branch')
+            $query = $query->with(['branch', 'bmpcMember:id,savings_no,last_transaction_date'])
                 ->reorder()
                 ->leftJoin('branches as export_branch', 'export_branch.id', '=', $query->qualifyColumn('branch_id'))
                 ->select($query->qualifyColumn('*'))
@@ -136,7 +141,7 @@ class MemberExporter
                         yield $this->organizedRow($member);
                     }
                 })(),
-                textColumns: [0],
+                textColumns: [0, 1, 5],
                 titleLines: [...self::ORGANIZED_TITLE, 'As of '.now()->format('F j, Y')],
             );
         }
@@ -152,7 +157,7 @@ class MemberExporter
                     yield $this->row($member);
                 }
             })(),
-            textColumns: [0],
+            textColumns: [0, 1],
         );
     }
 }

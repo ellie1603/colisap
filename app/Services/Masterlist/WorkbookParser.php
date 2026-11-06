@@ -25,7 +25,7 @@ use ZipArchive;
  *  - detectSheets(): finds each sheet's header row, maps columns to fields and suggests a branch
  *  - rows(): streams a sheet's data rows without loading the workbook into memory
  *  - normalizeRow(): converts one row into clean member data plus errors / warnings
- *  - sideListEntries(): reads the working lists beside the main table (Acct. Number + flag/segment/balance)
+ *  - sideListEntries(): reads the working lists beside the main table (Savings Number + flag/segment/balance)
  * Excel error values (#N/A, #VALUE!, ####…) and computed columns are never treated as data.
  */
 class WorkbookParser
@@ -36,7 +36,7 @@ class WorkbookParser
      * @var array<string, string>
      */
     public const FIELDS = [
-        'account_no' => 'Acct. Number',
+        'account_no' => 'Savings Number',
         'full_name' => 'Account Name',
         'last_name' => 'Last name',
         'first_name' => 'First name',
@@ -65,7 +65,7 @@ class WorkbookParser
      * @var array<string, list<string>>
      */
     public const HEADER_ALIASES = [
-        'account_no' => ['acctnumber', 'acctno', 'acctcode', 'accountcode', 'cifkey', 'cif', 'cifno', 'cifnumber', 'accountnumber', 'accountno', 'accno', 'acctnum', 'accountnum', 'memberno', 'membersno', 'memberid', 'idno', 'cid', 'cidno', 'savingsacctno', 'saacctno', 'sano'],
+        'account_no' => ['savingsnumber', 'savingsno', 'savingsacctnumber', 'savingsaccountnumber', 'acctnumber', 'acctno', 'acctcode', 'accountcode', 'cifkey', 'cif', 'cifno', 'cifnumber', 'accountnumber', 'accountno', 'accno', 'acctnum', 'accountnum', 'memberno', 'membersno', 'memberid', 'idno', 'cid', 'cidno', 'savingsacctno', 'saacctno', 'sano'],
         'full_name' => ['accountname', 'name', 'fullname', 'membername', 'membersname', 'nameofmember', 'nameofmembers', 'completename'],
         'last_name' => ['lastname', 'surname', 'familyname', 'lname'],
         'first_name' => ['firstname', 'givenname', 'fname'],
@@ -204,7 +204,7 @@ class WorkbookParser
     ];
 
     /**
-     * A mobile-number list: Acct. Number, optionally the name, and a contact number — nothing else.
+     * A mobile-number list: Savings Number, optionally the name, and a contact number — nothing else.
      * Importing one only updates the contact number of members that already exist.
      *
      * @param  array<string, int|string|null>  $columns
@@ -394,15 +394,15 @@ class WorkbookParser
         $errors = &$result['errors'];
         $warnings = &$result['warnings'];
 
-        // Acct. Number — the unique identifier, always a string.
+        // Savings Number — the unique identifier, always a string.
         $accountCell = isset($columns['account_no']) ? ($cells[$columns['account_no']] ?? null) : null;
         $result['numeric_account'] = is_int($accountCell) || is_float($accountCell);
         $data['account_no'] = $this->normalizeAccountNumber($accountCell);
 
         if ($data['account_no'] === null) {
-            $errors[] = 'Missing Acct. Number';
+            $errors[] = 'Missing Savings Number';
         } elseif (! preg_match('/^[0-9A-Za-z\-]{4,30}$/', $data['account_no'])) {
-            $errors[] = "Invalid Acct. Number \"{$data['account_no']}\"";
+            $errors[] = "Invalid Savings Number \"{$data['account_no']}\"";
         }
 
         // Names
@@ -416,8 +416,7 @@ class WorkbookParser
         $data['segment'] = $this->parseSegment($raw['segment'] ?? null);
 
         if ($data['segment'] === null) {
-            $isRegular = isset($raw['segment']) && preg_match('/^R(EGULAR)?$/i', trim($raw['segment'])) === 1;
-            $warnings[] = isset($raw['segment']) && ! $isRegular ? "Unrecognized segmentation \"{$raw['segment']}\" — left Unassigned" : 'No segmentation — left Unassigned';
+            $warnings[] = isset($raw['segment']) ? "Unrecognized segmentation \"{$raw['segment']}\" — left Unassigned" : 'No segmentation — left Unassigned';
         }
 
         // Benefit category
@@ -462,7 +461,7 @@ class WorkbookParser
     }
 
     /**
-     * Normalize one row of a mobile-number list: the Acct. Number to match and the number to save.
+     * Normalize one row of a mobile-number list: the Savings Number to match and the number to save.
      * A row without a usable number is an error, so a blank cell never erases a number already on file.
      *
      * @param  array<int, mixed>  $cells
@@ -498,9 +497,9 @@ class WorkbookParser
         ];
 
         if ($accountNo === null) {
-            $result['errors'][] = 'Missing Acct. Number';
+            $result['errors'][] = 'Missing Savings Number';
         } elseif (! preg_match('/^[0-9A-Za-z\-]{4,30}$/', $accountNo)) {
-            $result['errors'][] = "Invalid Acct. Number \"{$accountNo}\"";
+            $result['errors'][] = "Invalid Savings Number \"{$accountNo}\"";
         }
 
         if (! isset($raw['contact_number'])) {
@@ -647,7 +646,7 @@ class WorkbookParser
     }
 
     /**
-     * Diamond, Gold or Silver. "Regular" (R) is no longer a segment: such members are simply Unassigned.
+     * Diamond, Gold, Silver or Regular.
      */
     public function parseSegment(?string $value): ?string
     {
@@ -657,6 +656,7 @@ class WorkbookParser
             $key === 'D' || str_starts_with($key, 'DIAMOND') => 'D',
             $key === 'G' || str_starts_with($key, 'GOLD') => 'G',
             $key === 'S' || str_starts_with($key, 'SILVER') => 'S',
+            $key === 'R' || str_starts_with($key, 'REGULAR') => 'R',
             default => null,
         };
     }

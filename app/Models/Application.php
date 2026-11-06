@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Exceptions\ApplicationAlreadyDecided;
 use App\Models\Concerns\Auditable;
+use App\Services\Colisap\BmpcMemberLink;
 use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -43,6 +44,13 @@ class Application extends Model
     public const FOR_NEW_PEOPLE = ['new', 'active'];
 
     /**
+     * Account and personal details from the old enrolling screen, copied to the member when they are added.
+     *
+     * @var list<string>
+     */
+    public const ENROLLMENT_DETAILS = ['cif_key', 'segment', 'sex', 'civil_status', 'occupation', 'address', 'office_address', 'employer', 'religion', 'dependents'];
+
+    /**
      * The request types as shown to staff; the upgrade is named after the higher category (e.g. "Upgrade to 60K").
      *
      * @return array<string, string>
@@ -80,15 +88,25 @@ class Application extends Model
     protected $fillable = [
         'member_id',
         'account_no',
+        'cif_key',
         'last_name',
         'first_name',
         'middle_name',
         'branch_id',
         'birthdate',
+        'sex',
+        'civil_status',
         'contact_number',
+        'occupation',
+        'address',
+        'office_address',
+        'employer',
+        'religion',
+        'dependents',
         'savings_balance',
         'type',
         'category',
+        'segment',
         'application_date',
         'status',
         'approved_at',
@@ -110,6 +128,7 @@ class Application extends Model
         'application_date' => 'date',
         'approved_at' => 'date',
         'birthdate' => 'date',
+        'dependents' => 'integer',
         'savings_balance' => 'decimal:2',
         'good_health_declared' => 'boolean',
         'age_verified' => 'boolean',
@@ -139,7 +158,7 @@ class Application extends Model
     // ---------------------------------------------------------------- No double applications
 
     /**
-     * Why an application of this type cannot be filed for this Acct. Number right now, or null when it can.
+     * Why an application of this type cannot be filed for this Savings Number right now, or null when it can.
      * One application is open at a time; a rejected one is reopened instead of filed again; a new application
      * is only for someone who is not a member yet; a re-application only for a member whose participation ended.
      */
@@ -151,7 +170,7 @@ class Application extends Model
             return null;
         }
 
-        // Checked across every branch: an Acct. Number belongs to one person in the whole cooperative.
+        // Checked across every branch: a Savings Number belongs to one person in the whole cooperative.
         [$member, $applications] = Branch::withoutRestriction(function () use ($accountNo, $member) {
             $member ??= Member::withTrashed()->where('account_no', $accountNo)->first();
 
@@ -170,15 +189,15 @@ class Application extends Model
         $label = strtolower(self::TYPES[$type] ?? 'application');
 
         if ($applications->contains('status', 'pending')) {
-            return 'There is already a pending application for this Acct. Number. Open it to approve or reject it instead of filing another one.';
+            return 'There is already a pending application for this Savings Number. Open it to approve or reject it instead of filing another one.';
         }
 
         if ($applications->firstWhere('type', $type)?->status === 'rejected') {
-            return "The {$label} for this Acct. Number was rejected. Reopen that application instead of filing a second one.";
+            return "The {$label} for this Savings Number was rejected. Reopen that application instead of filing a second one.";
         }
 
         if (in_array($type, self::FOR_NEW_PEOPLE, true) && $member !== null) {
-            return "This Acct. Number already belongs to a member ({$member->account_name}). If their participation has ended, file a re-application instead.";
+            return "This Savings Number already belongs to a member ({$member->account_name}). If their participation has ended, file a re-application instead.";
         }
 
         if ($type === 'upgrade') {
@@ -186,7 +205,7 @@ class Application extends Model
         }
 
         if ($type === 'reapplication' && $member === null) {
-            return 'No member has this Acct. Number. Choose the "New member" transaction instead.';
+            return 'No member has this Savings Number. Choose the "New member" transaction instead.';
         }
 
         if ($type === 'reapplication' && ! in_array($member->status, ['terminated', 'withdrawn'], true)) {
@@ -267,7 +286,7 @@ class Application extends Model
     public static function upgradeProblem(?Member $member): ?string
     {
         return match (true) {
-            $member === null => 'No member has this Acct. Number.',
+            $member === null => 'No member has this Savings Number.',
             $member->status !== 'active' => 'Only an active member can upgrade. This member is '.strtolower(Member::STATUSES[$member->status] ?? $member->status).'.',
             $member->category !== Member::BASIC_CATEGORY => 'This member is already in the '.Member::higherCategoryLabel().' category.',
             $member->category_upgrade_requested_at !== null => 'This member already asked to upgrade on '.$member->category_upgrade_requested_at->toFormattedDateString().'.',
@@ -320,6 +339,14 @@ class Application extends Model
             ])->save();
 
             $member->refreshStatus();
+
+            // The new member takes their CIF Key, savings and other details from the BMPC member list.
+            $link = app(BmpcMemberLink::class);
+
+            if ($bmpcMember = $link->matchFor($member)) {
+                $link->apply($member, $bmpcMember);
+            }
+
             $this->setRelation('member', $member);
         });
     }
@@ -378,6 +405,7 @@ class Application extends Model
             'branch_id' => $this->branch_id,
             'birthdate' => $this->birthdate,
             'contact_number' => $this->contact_number,
+            ...$this->only(self::ENROLLMENT_DETAILS),
             'application_date' => $this->application_date,
             'category' => $this->category,
             'status' => 'waiting',

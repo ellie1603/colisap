@@ -9,6 +9,7 @@ use App\Models\ImportBatch;
 use App\Models\ImportRow;
 use App\Models\Member;
 use App\Models\SavingsTransaction;
+use App\Services\Colisap\BmpcMemberLink;
 use App\Services\Colisap\MemberStatusEngine;
 use App\Services\Policy\PolicySettings;
 use App\Services\Reports\SpreadsheetWriter;
@@ -26,7 +27,7 @@ use Throwable;
 
 /**
  * Masterlist import pipeline (no row limit, no queue worker required):
- *   createBatch()  upload → sheet detection, branch & column suggestions
+ *   createBatch()  upload (one or several workbooks) → sheet detection, branch & column suggestions
  *   stageSheet()   stream one sheet into import_rows with validation (call once per sheet)
  *   finalize()     apply side lists, detect duplicates, classify new / update / invalid
  *   importChunk()  write the next N rows into members (call repeatedly until it returns 0)
@@ -44,6 +45,7 @@ class MasterlistImportService
         private WorkbookParser $parser,
         private PolicySettings $policy,
         private StatusTextMapper $statusText,
+        private BmpcMemberLink $bmpcLink,
     ) {}
 
     /**
@@ -51,18 +53,56 @@ class MasterlistImportService
      */
     public function createBatch(string $storedPath, string $originalName, Carbon|string|null $asOfDate = null): ImportBatch
     {
-        $sheets = $this->parser->detectSheets(Storage::disk(self::DISK)->path($storedPath));
+        return $this->createBatchFromFiles([$storedPath => $originalName], $asOfDate);
+    }
 
-        $batch = ImportBatch::create([
-            'file_name' => $originalName,
-            'file_path' => $storedPath,
+    /**
+     * Several workbooks go into one import: their sheets are mapped, checked for duplicates and imported together.
+     * Each sheet remembers its own file; with more than one file its name is prefixed with the file's name.
+     *
+     * @param  array<string, string>  $files  stored path => original file name
+     */
+    public function createBatchFromFiles(array $files, Carbon|string|null $asOfDate = null): ImportBatch
+    {
+        $sheets = [];
+
+        foreach ($files as $storedPath => $originalName) {
+            try {
+                $detected = $this->parser->detectSheets(Storage::disk(self::DISK)->path($storedPath));
+            } catch (Throwable $exception) {
+                throw new RuntimeException(count($files) > 1 ? "{$originalName}: {$exception->getMessage()}" : $exception->getMessage(), previous: $exception);
+            }
+
+            foreach ($detected as $sheet) {
+                $sheets[] = [
+                    ...$sheet,
+                    'name' => count($files) > 1 ? Str::limit("{$originalName} · {$sheet['name']}", 250) : $sheet['name'],
+                    'sheet_name' => $sheet['name'],
+                    'file' => $storedPath,
+                    'staged' => false,
+                    'staged_rows' => 0,
+                ];
+            }
+        }
+
+        return ImportBatch::create([
+            'file_name' => Str::limit(implode(', ', $files), 250),
+            'file_path' => array_key_first($files),
             'as_of_date' => $asOfDate ?? now()->toDateString(),
             'status' => 'analyzed',
-            'sheets' => array_map(fn (array $sheet) => [...$sheet, 'staged' => false, 'staged_rows' => 0], $sheets),
+            'sheets' => $sheets,
             'uploaded_by' => Auth::id(),
         ]);
+    }
 
-        return $batch;
+    /**
+     * Every workbook stored for this import.
+     *
+     * @return list<string>
+     */
+    public function storedFiles(ImportBatch $batch): array
+    {
+        return collect($batch->sheets ?? [])->pluck('file')->push($batch->file_path)->filter()->unique()->values()->all();
     }
 
     /**
@@ -99,7 +139,7 @@ class MasterlistImportService
         $allowNegative = $this->policy->bool('allow_negative_balance');
         $isContactList = WorkbookParser::isContactList($columns);
         $benefitAmounts = $this->benefitAmounts();
-        $path = Storage::disk(self::DISK)->path($batch->file_path);
+        $path = Storage::disk(self::DISK)->path($sheet['file'] ?? $batch->file_path);
         $hasBranchColumn = isset($columns['branch']) && ! $isContactList;
         $homeBranchId = Branch::restrictedId();
         $branchNames = $hasBranchColumn ? Branch::query()->orderBy('sort_order')->pluck('name', 'id')->all() : [];
@@ -181,9 +221,9 @@ class MasterlistImportService
 
             if ($usualLength && strlen($data['account_no']) < $usualLength) {
                 $data['account_no'] = str_pad($data['account_no'], $usualLength, '0', STR_PAD_LEFT);
-                $warnings[] = "Acct. Number was stored as a number in Excel; leading zeros restored ({$data['account_no']})";
+                $warnings[] = "Savings Number was stored as a number in Excel; leading zeros restored ({$data['account_no']})";
             } elseif (! $usualLength) {
-                $warnings[] = 'Acct. Number was stored as a number in Excel — verify leading zeros';
+                $warnings[] = 'Savings Number was stored as a number in Excel — verify leading zeros';
             }
 
             $buffer[] = [...$row, 'account_no' => $data['account_no'], 'data' => json_encode($data), 'warnings' => json_encode($warnings)];
@@ -308,15 +348,13 @@ class MasterlistImportService
         $member = $accountNo === null ? null : Branch::withoutRestriction(fn () => Member::withTrashed()->where('account_no', $accountNo)->first());
 
         if ($errors === [] && ($repeat = $this->rowWithSameAccount($batch, $row, $accountNo))) {
-            $errors[] = "Duplicate Acct. Number — already listed in {$repeat->sheet} row {$repeat->row_number}";
+            $errors[] = "Duplicate Savings Number — already listed in {$repeat->sheet} row {$repeat->row_number}";
         }
 
         if ($errors === [] && $isContactList && $member === null) {
-            $errors[] = 'No member has this Acct. Number — mobile number not imported';
+            $errors[] = 'No member has this Savings Number — mobile number not imported';
         } elseif ($errors === [] && $isContactList && $homeBranchId !== null && $member->branch_id !== $homeBranchId) {
             $errors[] = 'This member belongs to another branch — mobile number not imported';
-        } elseif ($errors === [] && ! $isContactList && $member === null && ($data['approval_date'] ?? null) === null) {
-            $errors[] = 'New member has no approval (NEW) date';
         }
 
         $row->update([
@@ -338,7 +376,7 @@ class MasterlistImportService
     }
 
     /**
-     * Another row of the file, already going in, for the same Acct. Number (also when written with or without
+     * Another row of the file, already going in, for the same Savings Number (also when written with or without
      * its leading zeros).
      */
     private function rowWithSameAccount(ImportBatch $batch, ImportRow $row, ?string $accountNo): ?ImportRow
@@ -376,7 +414,7 @@ class MasterlistImportService
     }
 
     /**
-     * Acct. Numbers are the same account when they differ only by leading zeros, dashes or letter case
+     * Savings Numbers are the same account when they differ only by leading zeros, dashes or letter case
      * (Excel turns 00301493995 into 301493995 when the cell is stored as a number).
      */
     private function accountKey(?string $accountNo): string
@@ -385,7 +423,7 @@ class MasterlistImportService
     }
 
     /**
-     * Guard against adding a member twice: a row whose Acct. Number is an existing member's number written
+     * Guard against adding a member twice: a row whose Savings Number is an existing member's number written
      * differently (leading zeros lost, dashes added) is pointed at that member, so it updates instead of creating.
      *
      * @param  list<array<string, mixed>>  $rows
@@ -419,7 +457,7 @@ class MasterlistImportService
             if (($data['mode'] ?? null) !== 'contacts') {
                 $rows[$index]['warnings'] = json_encode([
                     ...(json_decode($row['warnings'], true) ?? []),
-                    "Acct. Number \"{$accountNo}\" matched to existing member {$match} — updated, not added again",
+                    "Savings Number \"{$accountNo}\" matched to existing member {$match} — updated, not added again",
                 ]);
             }
         }
@@ -428,7 +466,7 @@ class MasterlistImportService
     }
 
     /**
-     * A new Acct. Number whose name is already in the same branch may be one person entered twice. Only the
+     * A new Savings Number whose name is already in the same branch may be one person entered twice. Only the
      * cooperative can tell namesakes apart, so the row is still imported but flagged for checking.
      */
     private function flagPossibleDoubleEntries(ImportBatch $batch): void
@@ -456,7 +494,7 @@ class MasterlistImportService
                     if ($twin !== null) {
                         $row->update(['warnings' => [
                             ...($row->warnings ?? []),
-                            "Possible double entry: a member with the same name is already in this branch under Acct. Number {$twin}",
+                            "Possible double entry: a member with the same name is already in this branch under Savings Number {$twin}",
                         ]]);
                     }
                 }
@@ -497,7 +535,7 @@ class MasterlistImportService
 
         $pending = fn () => ImportRow::query()->where('import_batch_id', $batch->id)->where('action', 'pending');
 
-        // The same Acct. Number twice in one file — exactly, or written with and without its leading zeros —
+        // The same Savings Number twice in one file — exactly, or written with and without its leading zeros —
         // makes the file incorrect: every repeat is marked, and the import is refused until they are resolved.
         $firstSeen = [];
         $repeats = [];
@@ -517,7 +555,7 @@ class MasterlistImportService
                 ImportRow::whereIn('id', $ids)->update([
                     'action' => 'duplicate',
                     'status' => 'skipped',
-                    'errors' => json_encode(["Duplicate Acct. Number — already listed in {$firstOccurrence}"]),
+                    'errors' => json_encode(["Duplicate Savings Number — already listed in {$firstOccurrence}"]),
                 ]);
             }
         });
@@ -535,7 +573,7 @@ class MasterlistImportService
         $contacts()->where('action', 'pending')->update([
             'action' => 'invalid',
             'status' => 'skipped',
-            'errors' => json_encode(['No member has this Acct. Number — mobile number not imported']),
+            'errors' => json_encode(['No member has this Savings Number — mobile number not imported']),
         ]);
 
         if ($branchId = Branch::restrictedId()) {
@@ -550,13 +588,6 @@ class MasterlistImportService
                     'errors' => json_encode(['This member belongs to another branch — mobile number not imported']),
                 ]);
         }
-
-        // New members must have an approval date to start the waiting period.
-        $pending()->whereNull('data->approval_date')->update([
-            'action' => 'invalid',
-            'status' => 'skipped',
-            'errors' => json_encode(['New member has no approval (NEW) date']),
-        ]);
 
         $pending()->update(['action' => 'new']);
         $this->flagPossibleDoubleEntries($batch);
@@ -698,7 +729,7 @@ class MasterlistImportService
 
         return $duplicates === 0
             ? null
-            : 'This file lists '.number_format($duplicates).' Acct. Number(s) more than once, so nothing was imported. Correct the file and upload it again, or delete the duplicate rows from the preview.';
+            : 'This file lists '.number_format($duplicates).' Savings Number(s) more than once, so nothing was imported. Correct the file and upload it again, or delete the duplicate rows from the preview.';
     }
 
     /**
@@ -776,7 +807,9 @@ class MasterlistImportService
 
         // The batch row stays locked while a chunk is written, so the same import open in two tabs (or
         // two clicks) waits its turn instead of writing the same rows twice.
-        $processed = DB::transaction(function () use ($batch, $limit): int {
+        $writtenAccounts = [];
+
+        $processed = DB::transaction(function () use ($batch, $limit, &$writtenAccounts): int {
             $locked = ImportBatch::query()->whereKey($batch->id)->lockForUpdate()->firstOrFail();
 
             $rows = ImportRow::query()
@@ -792,6 +825,7 @@ class MasterlistImportService
             }
 
             $tally = $this->importRows($locked, $rows);
+            $writtenAccounts = $rows->whereIn('action', ['new', 'update'])->pluck('account_no')->all();
 
             $locked->update([
                 'processed_rows' => $locked->processed_rows + $rows->count(),
@@ -802,6 +836,9 @@ class MasterlistImportService
 
             return $rows->count();
         });
+
+        // The members just written take their CIF Key, savings and other details from the BMPC member list.
+        $this->bmpcLink->syncSavingsNumbers($writtenAccounts);
 
         $batch->refresh();
 
@@ -826,7 +863,7 @@ class MasterlistImportService
         $results = [];
         $applications = [];
 
-        // Acct. Numbers are matched across every branch, whoever runs the import, so no member is created twice.
+        // Savings Numbers are matched across every branch, whoever runs the import, so no member is created twice.
         $members = Branch::withoutRestriction(fn () => Member::withTrashed()
             ->whereIn('account_no', $rows->pluck('account_no')->filter()->unique()->values())
             ->get()
@@ -1057,7 +1094,7 @@ class MasterlistImportService
     private function importContactNumber(ImportRow $row, ?Member $member): array
     {
         if ($member === null) {
-            throw new RuntimeException("No member has Acct. Number {$row->account_no}");
+            throw new RuntimeException("No member has Savings Number {$row->account_no}");
         }
 
         $member->contact_number = $row->data['contact_number'];
@@ -1158,8 +1195,10 @@ class MasterlistImportService
             return $summary;
         });
 
-        if ($batch->file_path) {
-            Storage::disk(self::DISK)->delete($batch->file_path);
+        $files = $this->storedFiles($batch);
+
+        if ($files !== []) {
+            Storage::disk(self::DISK)->delete($files);
         }
 
         return $summary;
@@ -1188,7 +1227,7 @@ class MasterlistImportService
         return response()->streamDownload(function () use ($batch) {
             $out = fopen('php://output', 'w');
             fwrite($out, "\xEF\xBB\xBF");
-            fputcsv($out, ['Sheet', 'Row', 'Acct. Number', 'Account Name', 'Classification', 'Result', 'Errors', 'Warnings']);
+            fputcsv($out, ['Sheet', 'Row', 'Savings Number', 'Account Name', 'Classification', 'Result', 'Errors', 'Warnings']);
 
             ImportRow::query()
                 ->where('import_batch_id', $batch->id)

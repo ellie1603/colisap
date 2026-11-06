@@ -69,10 +69,10 @@ class EditApplication extends EditRecord
                     default => 'The applicant is added to Members and starts the waiting period.',
                 })
                 ->action(function (array $data) {
-                    // The applicant becomes a member now; stop if someone with this Acct. Number was added meanwhile.
+                    // The applicant becomes a member now; stop if someone with this Savings Number was added meanwhile.
                     if ($this->record->member_id === null && $this->record->type !== 'upgrade' && Branch::withoutRestriction(fn () => Member::withTrashed()->where('account_no', $this->record->account_no)->exists())) {
-                        Notification::make()->title('This Acct. Number is already a member')
-                            ->body('A member with Acct. Number '.$this->record->account_no.' now exists, so this application cannot be approved as a new member.')
+                        Notification::make()->title('This Savings Number is already a member')
+                            ->body('A member with Savings Number '.$this->record->account_no.' now exists, so this application cannot be approved as a new member.')
                             ->danger()->send();
 
                         return;

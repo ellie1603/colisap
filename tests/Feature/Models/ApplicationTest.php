@@ -54,7 +54,7 @@ class ApplicationTest extends TestCase
             'an application for this number is already pending' => [null, [['new', 'pending']], 'new', 'already a pending application'],
             'their application was rejected: reopen it' => [null, [['new', 'rejected']], 'new', 'Reopen that application'],
             'the number already belongs to a member' => ['active', [['new', 'approved']], 'new', 'already belongs to a member'],
-            're-application for a number nobody has' => [null, [], 'reapplication', 'No member has this Acct. Number'],
+            're-application for a number nobody has' => [null, [], 'reapplication', 'No member has this Savings Number'],
             're-application while still participating' => ['active', [['new', 'approved']], 'reapplication', 'only for a member whose participation was terminated or withdrawn'],
             're-application after termination' => ['terminated', [['new', 'approved']], 'reapplication', null],
             're-application after withdrawal' => ['withdrawn', [['new', 'approved']], 'reapplication', null],
@@ -126,6 +126,32 @@ class ApplicationTest extends TestCase
             [$member->account_no, $member->account_name, $member->status, $member->category, $member->savings_balance, $member->approval_date->toDateString(), $member->contact_number],
         );
         $this->assertSame(1, Application::where('member_id', $member->id)->count(), 'Approval must not create a second application.');
+    }
+
+    public function test_the_enrolling_screen_details_are_filed_and_copied_to_the_member_on_approval(): void
+    {
+        $this->travelTo('2026-10-12 09:00:00');
+        $details = [
+            'cif_key' => '0010000006392', 'segment' => 'G', 'sex' => 'male', 'civil_status' => 'married', 'occupation' => 'Farmer',
+            'address' => 'Brgy. Poblacion, Barbaza', 'office_address' => 'Municipal Hall, Barbaza', 'employer' => 'LGU Barbaza',
+            'religion' => 'Roman Catholic', 'dependents' => 3,
+        ];
+        $this->actingAsRole(Permissions::CRS);
+
+        Livewire::test(ListApplications::class)
+            ->mountAction('create')
+            ->assertActionDataSet(['segment' => 'R'])
+            ->setActionData($this->applicantData($details))
+            ->callMountedAction()
+            ->assertHasNoActionErrors();
+
+        $application = Application::sole();
+        $this->assertSame($details, $application->only(array_keys($details)));
+
+        $this->actingAsRole(Permissions::ADMIN);
+        $application->approve(today());
+
+        $this->assertSame($details, Member::sole()->only(array_keys($details)));
     }
 
     /**

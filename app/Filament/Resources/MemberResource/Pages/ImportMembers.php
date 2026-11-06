@@ -92,8 +92,10 @@ class ImportMembers extends Page implements HasTable
         return $form
             ->schema([
                 Forms\Components\FileUpload::make('file')
-                    ->label('Masterlist workbook')
-                    ->helperText('Excel (.xlsx), OpenDocument (.ods) or CSV. One sheet per branch (the sheet name selects the branch), or one sheet with a Branch column for several branches. No row limit. A file with only the Acct. Number, name and mobile number updates the members\' mobile numbers and nothing else.')
+                    ->label('Masterlist workbooks')
+                    ->multiple()
+                    ->maxFiles(20)
+                    ->helperText('Excel (.xlsx), OpenDocument (.ods) or CSV. Select one file or several at once — they are checked and imported together. One sheet per branch (the sheet name selects the branch), or one sheet with a Branch column for several branches. No row limit. A file with only the Savings Number, name and mobile number updates the members\' mobile numbers and nothing else.')
                     ->disk(MasterlistImportService::DISK)
                     ->directory(MasterlistImportService::DIRECTORY)
                     ->visibility('private')
@@ -162,14 +164,17 @@ class ImportMembers extends Page implements HasTable
     public function analyze(): void
     {
         $state = $this->uploadForm->getState();
+        $paths = array_values((array) $state['file']);
+        $names = (array) ($state['original_name'] ?? []);
+        $files = collect($paths)->mapWithKeys(fn (string $path) => [$path => $names[$path] ?? basename($path)])->all();
 
         try {
-            $batch = $this->service()->createBatch($state['file'], $state['original_name'] ?? basename($state['file']));
+            $batch = $this->service()->createBatchFromFiles($files);
         } catch (Throwable $exception) {
             report($exception);
-            Storage::disk(MasterlistImportService::DISK)->delete($state['file']);
+            Storage::disk(MasterlistImportService::DISK)->delete($paths);
 
-            Notification::make()->title('Could not read the workbook')
+            Notification::make()->title(count($files) > 1 ? 'Could not read one of the workbooks' : 'Could not read the workbook')
                 ->body('Make sure it is a valid Excel file. '.$exception->getMessage())
                 ->danger()->send();
 
@@ -182,7 +187,7 @@ class ImportMembers extends Page implements HasTable
 
         if (collect($this->mapping)->where('include', true)->isEmpty()) {
             Notification::make()->title('Check the sheet mapping')
-                ->body('No sheet could be matched automatically to a branch (by its name or a Branch column) with an Acct. Number column. Map them below.')
+                ->body('No sheet could be matched automatically to a branch (by its name or a Branch column) with a Savings Number column. Map them below.')
                 ->warning()->send();
         }
     }
@@ -203,7 +208,7 @@ class ImportMembers extends Page implements HasTable
             return array_keys($sheets);
         }
 
-        $named = array_map(fn (array $sheet) => Branch::resolve($sheet['name'])?->id, $sheets);
+        $named = array_map(fn (array $sheet) => Branch::resolve($sheet['sheet_name'] ?? $sheet['name'])?->id, $sheets);
         $hasOwnSheet = in_array($ownBranch, $named, true);
 
         return array_keys(array_filter($sheets, fn (array $sheet, int $position) => $named[$position] === $ownBranch
@@ -253,9 +258,9 @@ class ImportMembers extends Page implements HasTable
             if ($include && ! $sheet['header_row']) {
                 $problems[] = "{$sheet['name']}: no header row was found";
             } elseif ($include && ! isset($columns['account_no'])) {
-                $problems[] = "{$sheet['name']}: map the Acct. Number column";
+                $problems[] = "{$sheet['name']}: map the Savings Number column";
             } elseif ($isContactList) {
-                // A mobile-number list matches members by Acct. Number alone: it needs no name and no branch.
+                // A mobile-number list matches members by Savings Number alone: it needs no name and no branch.
                 $map['branch_id'] = $ownBranch;
             } elseif ($include && ! isset($columns['full_name']) && ! (isset($columns['last_name']) && isset($columns['first_name']))) {
                 $problems[] = "{$sheet['name']}: map the Account Name column";
@@ -478,7 +483,7 @@ class ImportMembers extends Page implements HasTable
             ->columns([
                 Tables\Columns\TextColumn::make('sheet')->searchable()->visibleFrom('md'),
                 Tables\Columns\TextColumn::make('row_number')->label('Row'),
-                Tables\Columns\TextColumn::make('account_no')->label('Acct. Number')->fontFamily('mono')->searchable(),
+                Tables\Columns\TextColumn::make('account_no')->label('Savings Number')->fontFamily('mono')->searchable(),
                 Tables\Columns\TextColumn::make('account_name')->label('Account Name')->searchable()->wrap(),
                 Tables\Columns\TextColumn::make('action')->label('Classification')->badge()
                     ->formatStateUsing(fn (string $state) => ImportRow::ACTIONS[$state] ?? ucfirst($state))
@@ -558,9 +563,9 @@ class ImportMembers extends Page implements HasTable
     {
         $hints = [
             'category' => 'e.g. COLISAP40000 or COLISAP60000',
-            'segment' => 'D (Diamond), G (Gold) or S (Silver)',
+            'segment' => 'D (Diamond), G (Gold), S (Silver) or R (Regular)',
             'application_date' => 'e.g. 6/3/1998',
-            'approval_date' => 'e.g. 6/3/1998 — required for a new member',
+            'approval_date' => 'e.g. 6/3/1998 — leave blank if none (needed only to upgrade to 60,000)',
             'upgrade_requested_at' => 'e.g. 6/3/1998',
             'birthdate' => 'e.g. 6/3/1998',
             'date_deceased' => 'e.g. 6/3/1998',
